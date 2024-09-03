@@ -1,0 +1,14 @@
+[package]
+name = "dns-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+
+[dependencies]
+chrono = "0.4.38"
+curl = "0.4.46"
