@@ -2,7 +2,7 @@ mod utils;
 mod filter;
 mod tpool;
 
-use std::{io::{Error, ErrorKind}, net::UdpSocket, str, time::Duration};
+use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread, time::Duration};
 #[allow(unused_imports)]
 use utils::print_dump;
 use filter::FilterConfig;
@@ -75,7 +75,7 @@ fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : 
         // Set bit response
         reject_buff[2] = 1 << 7;
         // Set error code
-        reject_buff[3] = 5; /* REFUSE */
+        reject_buff[3] = 3; /* NOT EXIST */
 
         dns_response = reject_buff.to_vec();
         log_print!("   \x1b[31m[rejected]\x1b[0m\n");
@@ -104,22 +104,33 @@ fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : 
 
 fn listen(socket : &Arc<UdpSocket>) -> Result<(Vec<u8>, std::net::SocketAddr), std::io::Error> {
     let mut dns_req_pack : [u8; 512] = [0; 512];
-    let recv_result = socket.recv_from(&mut dns_req_pack);
-    if recv_result.is_err() {
-        return Err(recv_result.err().unwrap());
+    if socket.set_read_timeout(Some(Duration::new(1, 0))).is_err() {
+        return Err(Error::new(ErrorKind::Other, "Unable to set socket read timeout"));
     }
-    let (_, ip_addr) = recv_result.unwrap();
+    let remote_ip_addr: std::net::SocketAddr;
+
+    loop {
+        let recv_result = socket.recv_from(&mut dns_req_pack);
+        if recv_result.is_err() {
+            if recv_result.as_ref().err().unwrap().kind() == ErrorKind::WouldBlock {
+                continue;
+            }
+            return Err(recv_result.err().unwrap());
+        }
+        let (_, ip_addr) = recv_result.unwrap();
+        remote_ip_addr = ip_addr;
+        break;
+    }
 
     //log_debug!("usize={} ip_addr={}\n", size, ip_addr);
     //print_dump(&dns_req_pack, size);
 
     let dns_req_vec = dns_req_pack.to_vec();
 
-    Ok((dns_req_vec, ip_addr))
+    Ok((dns_req_vec, remote_ip_addr))
 }
 
-fn main() -> Result<(), std::io::Error>
-{
+fn start_dns_filter() -> Result<(), std::io::Error> {
     let mut filter_cfg: FilterConfig = FilterConfig::new();
 
     log_info!("Check for updates...\n");
@@ -160,4 +171,23 @@ fn main() -> Result<(), std::io::Error>
             }
         });
     }
+}
+
+fn main() -> Result<(), std::io::Error>
+{
+    // Thread parameter example
+    //let thread_param = 100;
+    //let start_dns_proxy_handle = move |data: i32| {
+    //    let data = start_dns_proxy();
+    //};
+    //let dns_proxy_thread = thread::spawn(move || {
+    //    start_dns_proxy_handle(thread_param)
+    //});
+
+    let dns_filter_thread = thread::spawn(move || {
+        let _ = start_dns_filter();
+    });
+    let _ = dns_filter_thread.join();
+
+    return Ok(())
 }
