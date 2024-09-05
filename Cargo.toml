@@ -12,3 +12,4 @@ opt-level = 3
 [dependencies]
 chrono = "0.4.38"
 curl = "0.4.46"
+ctrlc = "3.4.5"
