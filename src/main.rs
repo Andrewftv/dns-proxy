@@ -9,6 +9,7 @@ use filter::FilterConfig;
 use tpool::ThreadPool;
 use std::sync::Mutex;
 use std::sync::Arc;
+use std::sync::mpsc;
 
 fn lookup(dns_req_pack : &Vec<u8>) -> Result<Vec<u8>, std::io::Error> {
     let dns_server = ("192.168.0.1", 53);
@@ -183,11 +184,19 @@ fn main() -> Result<(), std::io::Error>
     //let dns_proxy_thread = thread::spawn(move || {
     //    start_dns_proxy_handle(thread_param)
     //});
+    let (tx, rx) = mpsc::channel();
 
     let dns_filter_thread = thread::spawn(move || {
-        let _ = start_dns_filter();
+        let res = start_dns_filter();
+        tx.send(res).unwrap();
     });
+
     let _ = dns_filter_thread.join();
+    let res = rx.recv().unwrap();
+    if res.is_err() {
+        log_error!("Abnornal termination\n");
+        return Err(res.err().unwrap());
+    }
 
     return Ok(())
 }
