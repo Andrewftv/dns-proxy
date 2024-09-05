@@ -38,7 +38,6 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        //log_debug!("EXECUTE\n");
         let job = Box::new(f);
 
         self.sender.as_ref().unwrap().send(job).unwrap();
@@ -51,7 +50,7 @@ impl Drop for ThreadPool {
         drop(self.sender.take());
 
         for worker in &mut self.workers {
-            println!("Shutting down worker {}", worker.id);
+            log_debug!("Shutting down worker {}\n", worker.id);
 
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
