@@ -113,9 +113,11 @@ fn listen(socket : &Arc<UdpSocket>) -> Result<(Vec<u8>, std::net::SocketAddr), s
     loop {
         let recv_result = socket.recv_from(&mut dns_req_pack);
         if recv_result.is_err() {
-            if recv_result.as_ref().err().unwrap().kind() == ErrorKind::WouldBlock {
+            let error_kind: ErrorKind = recv_result.as_ref().err().unwrap().kind();
+            if error_kind == ErrorKind::WouldBlock || error_kind == ErrorKind::TimedOut {
                 continue;
             }
+            log_error!("Listener failed. Error: {}\n", error_kind);
             return Err(recv_result.err().unwrap());
         }
         let (_, ip_addr) = recv_result.unwrap();
