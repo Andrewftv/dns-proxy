@@ -13,7 +13,7 @@ use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 struct DnsProxy {
-    running: Arc<AtomicBool>,
+    pub running: Arc<AtomicBool>,
 }
 
 impl DnsProxy {
@@ -116,7 +116,7 @@ impl DnsProxy {
         Ok(())
     }
 
-    fn listen(&self, socket : &Arc<UdpSocket>) -> Result<(Vec<u8>, std::net::SocketAddr), std::io::Error> {
+    pub fn listen(&self, socket : &Arc<UdpSocket>) -> Result<(Vec<u8>, std::net::SocketAddr), std::io::Error> {
         let mut dns_req_pack : [u8; 512] = [0; 512];
         if socket.set_read_timeout(Some(Duration::new(1, 0))).is_err() {
             return Err(Error::new(ErrorKind::Other, "Unable to set socket read timeout"));
@@ -129,7 +129,7 @@ impl DnsProxy {
                 let error_kind: ErrorKind = recv_result.as_ref().err().unwrap().kind();
 
                 if !self.running.load(Ordering::Relaxed) {
-                    log_info!("Stop execution\n");
+                    log_info!("Stoped by user\n");
                     return Err(Error::new(std::io::ErrorKind::Other, "Stoped by user"));
                 }
 
@@ -224,7 +224,7 @@ fn main() -> Result<(), std::io::Error>
     let _ = dns_filter_thread.join();
     let res = rx.recv().unwrap();
     if res.is_err() {
-        log_error!("Abnornal termination\n");
+        log_info!("Terminated\n");
         return Err(res.err().unwrap());
     }
 
