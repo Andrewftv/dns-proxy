@@ -1,15 +1,20 @@
 use std::io;
 use std::io::{BufRead, Error, ErrorKind};
 use std::collections::BTreeMap;
-use crate::{log_debug, log_error};
+use std::str;
 use crate::log_info;
 use crate::log_print;
+use crate::log_debug;
+#[cfg(feature = "filter_update")]
+use crate::log_error;
+#[cfg(feature = "filter_update")]
 use curl::easy::Easy;
+#[cfg(feature = "filter_update")]
 use std::io::Write;
+#[cfg(feature = "filter_update")]
 use std::fs::File;
-use std::str;
-use std::sync::Arc;
-use std::sync::Mutex;
+#[cfg(feature = "filter_update")]
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, PartialEq)]
 pub enum FilterType {
@@ -49,7 +54,11 @@ impl FilterConfig {
             ads_provider_list: BTreeMap::new() 
         }
     }
-    
+    pub fn get_num_entries(&self) -> usize {
+        return self.ads_provider_list.len();
+    }
+
+    #[cfg(feature = "filter_update")]
     fn get_remote_file_length(&self, curl: &mut Easy) -> Result<u64, curl::Error> {
         let rlen: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
 
@@ -87,6 +96,7 @@ impl FilterConfig {
         Ok(*value)
     }
 
+    #[cfg(feature = "filter_update")]
     fn get_local_file_length(&self) -> Result<u64, std::io::Error> {
         let res = File::open("blocklist.txt");
         if res.is_err() {
@@ -99,6 +109,7 @@ impl FilterConfig {
         Ok(metadata.len())
     }
 
+    #[cfg(feature = "filter_update")]
     pub fn check_update(&self) -> bool {
         // Get remote file length
         let mut curl = Easy::new();

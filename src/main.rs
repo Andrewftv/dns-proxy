@@ -1,8 +1,9 @@
 mod utils;
 mod filter;
 mod tpool;
+mod uiserver;
 
-use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread, time::Duration};
+use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread::{self, JoinHandle}, time::Duration};
 #[allow(unused_imports)]
 use utils::print_dump;
 use filter::FilterConfig;
@@ -11,6 +12,7 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use uiserver::UiServer;
 
 struct DnsProxy {
     pub running: Arc<AtomicBool>,
@@ -43,9 +45,6 @@ impl DnsProxy {
         let (answer_size, _) = answer_result.unwrap();
         dns_response.truncate(answer_size);
         
-        //log_info!("answer size: {} vector capacity: {} server IP: {}\n", answer_size, dns_response.capacity(), server_ip);
-        //print_dump(&dns_response, answer_size);
-
         Ok(dns_response)
     }
 
@@ -108,11 +107,6 @@ impl DnsProxy {
             return Err(send_result.err().unwrap());
         }
 
-        drop(dns_response);
-
-        //let send_size = send_result.unwrap();
-        //log_debug!("Sent {} bytes\n", send_size);
-
         Ok(())
     }
 
@@ -129,7 +123,7 @@ impl DnsProxy {
                 let error_kind: ErrorKind = recv_result.as_ref().err().unwrap().kind();
 
                 if !self.running.load(Ordering::Relaxed) {
-                    log_info!("Stoped by user\n");
+                    log_info!("DNS proxy stoped by user\n");
                     return Err(Error::new(std::io::ErrorKind::Other, "Stoped by user"));
                 }
 
@@ -143,31 +137,13 @@ impl DnsProxy {
             remote_ip_addr = ip_addr;
             break;
         }
-
-        //log_debug!("usize={} ip_addr={}\n", size, ip_addr);
-        //print_dump(&dns_req_pack, size);
-
         let dns_req_vec = dns_req_pack.to_vec();
 
         Ok((dns_req_vec, remote_ip_addr))
     }
 
-    pub fn start_dns_filter(&self) -> Result<(), std::io::Error> {
-        let mut filter_cfg: FilterConfig = FilterConfig::new();
-
-        log_info!("Check for updates...\n");
-        filter_cfg.check_update();
-        log_debug!("Check finished\n");
-
-        let cfg_result = filter_cfg.create_black_list_map();
-        if cfg_result.is_err() {
-            return Err(cfg_result.err().unwrap());
-        }
-        log_info!("Filter was created\n");
+    pub fn start_dns_filter(&self, filter_prot: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         let tpool = ThreadPool::new(4);
-        let filter_prot = Arc::new(Mutex::new(filter_cfg));
-        log_info!("Filter created\n");
-
         let bind_result = UdpSocket::bind("127.0.0.1:2053");
         if bind_result.is_err() {
             return Err(bind_result.err().unwrap());
@@ -182,7 +158,7 @@ impl DnsProxy {
                 return Err(listen_result.err().unwrap());
             }
             let (dns_req_pack, ip_addr) = listen_result.unwrap();
-            let shared_filter = Arc::clone(&filter_prot);
+            let shared_filter = Arc::clone(filter_prot);
             tpool.execute(move || {
                 // Handle the request
                 let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &shared_filter);
@@ -196,6 +172,34 @@ impl DnsProxy {
     }
 }
 
+fn set_ctrlc_handle(dns_proxy: &DnsProxy, ui_server: &UiServer) -> bool {
+    let running_ui = Arc::clone(&ui_server.running);
+    let running = Arc::clone(&dns_proxy.running);
+
+    let res = ctrlc::set_handler(move || {
+        running_ui.store(false, Ordering::Relaxed);
+        running.store(false, Ordering::Relaxed);
+    });
+
+    if res.is_err() {
+        return false;
+    }
+
+    return true;
+}
+
+fn wait_threads(proxy_thread: &JoinHandle<()>, proxy_run: &Arc<AtomicBool>, ui_thread: &JoinHandle<()>, ui_run: &Arc<AtomicBool>) {
+    while !proxy_thread.is_finished() && !ui_thread.is_finished() {
+        thread::sleep(Duration::from_millis(100));
+    }
+    if proxy_thread.is_finished() {
+        ui_run.store(false, Ordering::Relaxed);
+    }
+    if ui_thread.is_finished() {
+        proxy_run.store(false, Ordering::Relaxed);
+    }
+}
+
 fn main() -> Result<(), std::io::Error>
 {
     // Thread parameter example
@@ -206,26 +210,62 @@ fn main() -> Result<(), std::io::Error>
     //let dns_proxy_thread = thread::spawn(move || {
     //    start_dns_proxy_handle(thread_param)
     //});
-    let (tx, rx) = mpsc::channel();
+    let (tx_proxy, rx_proxy) = mpsc::channel();
+    let (tx_ui, rx_ui) = mpsc::channel();
     let dns_proxy_server = DnsProxy::new();
+    let ui_server = UiServer::new();
+    let mut filter_cfg: FilterConfig = FilterConfig::new();
 
-    let running = Arc::clone(&dns_proxy_server.running);
-    ctrlc::set_handler(move || {
-        log_info!("Received ^C\n");
-        running.store(false, Ordering::Relaxed);
-    })
-    .expect("Error setting ^C handler");
+    #[cfg(feature = "filter_update")]
+    log_info!("Check for updates...\n");
+    #[cfg(feature = "filter_update")]
+    filter_cfg.check_update();
+    #[cfg(feature = "filter_update")]
+    log_debug!("Check finished\n");
 
-    let dns_filter_thread = thread::spawn(move || {
-        let res = dns_proxy_server.start_dns_filter();
-        tx.send(res).unwrap();
+    let cfg_result = filter_cfg.create_black_list_map();
+    if cfg_result.is_err() {
+        return Err(cfg_result.err().unwrap());
+    }
+    log_info!("Filter was created\n");
+    let filter_prot = Arc::new(Mutex::new(filter_cfg));
+    let ui_filter_prot = Arc::clone(&filter_prot);
+
+    let running_ui = Arc::clone(&ui_server.running);
+    let running_proxy = Arc::clone(&dns_proxy_server.running);
+    // Set ^C handler
+    if !set_ctrlc_handle(&dns_proxy_server, &ui_server) {
+        log_error!("Unable to set ^C handle\n");
+    }
+    // Start DNS proxy thread
+    let proxy_thread = thread::spawn(move || {
+        let res = dns_proxy_server.start_dns_filter(&filter_prot);
+        tx_proxy.send(res).unwrap();
     });
-
-    let _ = dns_filter_thread.join();
-    let res = rx.recv().unwrap();
-    if res.is_err() {
-        log_info!("Terminated\n");
-        return Err(res.err().unwrap());
+    // Start UI thread
+    let ui_thread = thread::spawn(move || {
+        let res: Result<(), Error> = ui_server.start_gui_server(&ui_filter_prot);
+        tx_ui.send(res).unwrap();
+    });
+    // Wait for finish
+    wait_threads(&proxy_thread, &running_proxy,&ui_thread, &running_ui);
+    let _ = ui_thread.join();
+    let _ = proxy_thread.join();
+    // Finished. Read results
+    let proxy_res = rx_proxy.recv().unwrap();
+    let ui_res = rx_ui.recv().unwrap();
+    // Print error if exist
+    if proxy_res.is_err() {
+        let err_kind = proxy_res.as_ref().err().unwrap().kind();
+        if err_kind != ErrorKind::Other {
+            log_info!("DNS proxy thread abnormal terminated: {}\n", proxy_res.err().unwrap());
+        }
+    }
+    if ui_res.is_err() {
+        let err_kind = ui_res.as_ref().err().unwrap().kind();
+        if err_kind != ErrorKind::Other {
+            log_info!("UI thread abnormal terminated: {}\n", ui_res.err().unwrap());
+        }
     }
 
     return Ok(())

@@ -4,7 +4,6 @@ use std::{
 };
 use crate::log_debug;
 use crate::log_info;
-use crate::log_error;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -76,7 +75,7 @@ impl Worker {
                     job();
                 }
                 Err(_) => {
-                    log_error!("Worker {} disconnected; shutting down\n", id);
+                    log_info!("Worker {} disconnected; shutting down\n", id);
                     break;
                 }
             }

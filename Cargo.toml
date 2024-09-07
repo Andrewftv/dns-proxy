@@ -11,5 +11,9 @@ opt-level = 3
 
 [dependencies]
 chrono = "0.4.38"
-curl = "0.4.46"
+curl = { version = "0.4.46", optional = true }
 ctrlc = "3.4.5"
+
+[features]
+default = ["filter_update"]
+filter_update = ["dep:curl"]
