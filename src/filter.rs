@@ -230,8 +230,16 @@ impl FilterConfig {
                 if second_part.contains(third_party) {
                     continue;
                 }
-
                 single_line.truncate(pos);
+                // Skip invalid DNS name
+                if single_line.find('/').is_some() {
+                    continue;
+                }
+                // TODO: Use wildcard
+                if single_line.find('*').is_some() {
+                    continue;
+                }
+
                 let ftype = if index == 0 {
                     FilterType::Global
                 } else {
