@@ -1,6 +1,7 @@
 use std::io;
 use std::io::{BufRead, Error, ErrorKind};
 use std::collections::BTreeMap;
+use std::net::{Ipv4Addr, IpAddr};
 use std::str;
 use crate::log_info;
 use crate::log_print;
@@ -43,7 +44,9 @@ impl Statistics {
 }
 
 pub struct FilterConfig {
-    ads_provider_list : BTreeMap<String, Statistics>,
+    ads_provider_list: BTreeMap<String, Statistics>,
+    bind_addr: std::net::SocketAddr,
+    dns_srv_addr: std::net::SocketAddr,
 }
 
 impl FilterConfig {
@@ -51,9 +54,25 @@ impl FilterConfig {
         log_info!("Create new filter\n");
         FilterConfig
         {
-            ads_provider_list: BTreeMap::new() 
+            ads_provider_list: BTreeMap::new(),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 2053),
+            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 53),
         }
     }
+
+    pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
+        return self.dns_srv_addr;
+    }
+
+    pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) -> bool {
+        self.dns_srv_addr = addr;
+        return true;
+    }
+
+    pub fn get_bind_addr(&self) -> std::net::SocketAddr {
+        return self.bind_addr;
+    }
+
     pub fn get_num_entries(&self) -> usize {
         return self.ads_provider_list.len();
     }
@@ -76,7 +95,7 @@ impl FilterConfig {
                         pos += 1;
                     }
                     let mut str_file_len = hstr.split_off(pos);
-                    str_file_len.truncate(str_file_len.len() -2);
+                    str_file_len.truncate(str_file_len.len() - 2);
                     let file_len_res = str_file_len.parse::<u64>();
                     if file_len_res.is_ok() {
                         let mut value = len.lock().unwrap();

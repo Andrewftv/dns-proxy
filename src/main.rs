@@ -26,10 +26,8 @@ impl DnsProxy {
         }
     }
 
-    fn lookup(dns_req_pack : &Vec<u8>) -> Result<Vec<u8>, std::io::Error> {
-        let dns_server = ("192.168.0.1", 53);
+    fn lookup(dns_server: std::net::SocketAddr, dns_req_pack : &Vec<u8>) -> Result<Vec<u8>, std::io::Error> {
         let socket = UdpSocket::bind(("0.0.0.0", 0)).unwrap();
-
         if socket.send_to(&dns_req_pack, dns_server).is_err() {
             return Err(Error::new(ErrorKind::AddrNotAvailable, "Unable to send request to DNS server"));
         }
@@ -76,11 +74,13 @@ impl DnsProxy {
         shared_filter : &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         let asked_name = DnsProxy::get_asked_string(dns_req_pack);
         let mut filter_config = shared_filter.lock().unwrap();
+        let dns_srv_addr = filter_config.get_dns_srv_addr();
 
         log_info!("Ask for: {}", asked_name);
 
         let dns_response : Vec<u8>;
         if filter_config.search(&asked_name) {
+            drop(filter_config);
             let mut reject_buff : [u8; 12] = [0; 12];
             // Copy ID field
             reject_buff[0] = dns_req_pack[0];
@@ -93,7 +93,8 @@ impl DnsProxy {
             dns_response = reject_buff.to_vec();
             log_print!("   \x1b[31m[rejected]\x1b[0m\n");
         } else {
-            let lookup_result = DnsProxy::lookup(dns_req_pack);
+            drop(filter_config);
+            let lookup_result = DnsProxy::lookup(dns_srv_addr, dns_req_pack);
             if lookup_result.is_err() {
                 return Err(lookup_result.err().unwrap());
             }
@@ -144,7 +145,10 @@ impl DnsProxy {
 
     pub fn start_dns_filter(&self, filter_prot: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         let tpool = ThreadPool::new(4);
-        let bind_result = UdpSocket::bind("127.0.0.1:2053");
+        let cfg = filter_prot.lock().unwrap();
+        let bind_addr = cfg.get_bind_addr();
+        drop(cfg); 
+        let bind_result = UdpSocket::bind(bind_addr);
         if bind_result.is_err() {
             return Err(bind_result.err().unwrap());
         }
