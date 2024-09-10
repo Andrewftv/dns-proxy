@@ -171,7 +171,11 @@ impl UiServer {
             // Read request contents
             let mut buff = Vec::with_capacity(1024);
             buff.resize(1024, 0);
-            let size = stream.read(&mut buff).unwrap();
+            let res = stream.read(&mut buff);
+            if res.is_err() {
+                continue;
+            }
+            let size = res.unwrap();
             buff.truncate(size);
             // TODO: Validation
             log_debug!("Peer address: {}\n", stream.peer_addr().unwrap());
