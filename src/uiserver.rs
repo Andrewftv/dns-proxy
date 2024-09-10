@@ -183,6 +183,9 @@ impl UiServer {
             drop(buff);
             // Get request tags
             let tags = UiServer::get_request_tags(&request);
+            if tags.len() == 0 {
+                continue;
+            }
             log_debug!("Request for: {}\n", tags[0]);
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => 
