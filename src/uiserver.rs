@@ -95,7 +95,6 @@ impl UiServer {
             if line.is_empty() {
                 break;
             }
-            //log_debug!("--- {}\n", line);
             tags.push(line.to_string());
         }
 
