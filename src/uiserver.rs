@@ -132,7 +132,7 @@ impl UiServer {
 
         let temp = param.parse::<std::net::Ipv4Addr>();
         if temp.is_err() {
-            println!("--- {}", temp.err().unwrap().to_string());
+            log_error!("Error parsing IP address string\n");
             return false;
         }
 
