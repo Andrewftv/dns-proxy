@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
+use chrono::{DateTime, Local};
 
 use crate::{log_error, log_debug, log_info};
 use crate::filter::FilterConfig;
@@ -41,6 +42,20 @@ impl UiServer {
                 drop(filter);
                 dns_srv_addr.to_string()
             }
+            "{#UPDATE_DATE}" => {
+                let mut update_str: String = Default::default();
+                let res = std::fs::metadata("blocklist.txt");
+                if res.is_ok() {
+                    let metadata = res.unwrap();
+                    let res = metadata.modified();
+                    if res.is_ok() {
+                        let system_time = res.unwrap();
+                        let datetime: DateTime<Local> = system_time.into();
+                        update_str = datetime.format("%Y/%m/%d %T").to_string();
+                    }
+                }
+                update_str
+            }
             _=> Default::default(),
         };
 
@@ -61,12 +76,14 @@ impl UiServer {
         return new_contents;
     }
 
-    fn prepare_content(status: &str, filename: &str, post_process: bool, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn prepare_content(headers: &mut Vec<String>, filename: Option<String>, post_process: bool, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
         let mut response: String = Default::default();
-        if !filename.is_empty() {
-            let cont_res = std::fs::read_to_string(filename);
+        let mut contents: String = Default::default();
+        if filename.is_some() {
+            let name: &String = &filename.unwrap();
+            let cont_res = std::fs::read_to_string(name);
             if cont_res.is_err() {
-                log_error!("Unable to open {}\n", filename);
+                log_error!("Unable to open {}\n", name);
                 return response;
             }
 
@@ -75,15 +92,20 @@ impl UiServer {
                 contents_temp = UiServer::replace_tag("{#ENTRIES}", &contents_temp, filter_prot);
                 contents_temp = UiServer::replace_tag("{#LISTEN}", &contents_temp, filter_prot);
                 contents_temp = UiServer::replace_tag("{#DNSSRV}", &contents_temp, filter_prot);
+                contents_temp = UiServer::replace_tag("{#UPDATE_DATE}", &contents_temp, filter_prot);
             }
-            let contents = contents_temp;
+            contents = contents_temp;
             let length = contents.len();
-            response = format!("{status}\r\nContent-Length: {length}\r\n\r\n{contents}");
-
-            return response;
-        } else {
-            response = format!("{status}\r\n\r\n");
+            let contents_len_hdr = format!("Content-Length: {}", length);
+            headers.push(contents_len_hdr);
         }
+
+        for index in 0..headers.len() {
+            response += &headers[index];
+            response += "\r\n";
+        }
+        response += "\r\n";
+        response += &contents;
 
         return response;
     } 
@@ -186,11 +208,17 @@ impl UiServer {
                 continue;
             }
             log_debug!("Request for: {}\n", tags[0]);
+
+            let mut headers: Vec<String> = vec![];
             let response = match &tags[0][..] {
-                "GET / HTTP/1.1" => 
-                    UiServer::prepare_content("HTTP/1.1 200 OK", "html/start_page.tmpl", true, filter_prot),
-                "GET /change_ip.html HTTP/1.1" =>
-                    UiServer::prepare_content("HTTP/1.1 200 OK", "html/change_ip.html", false, filter_prot),
+                "GET / HTTP/1.1" => {
+                    headers.push("HTTP/1.1 200 OK".to_string());
+                    UiServer::prepare_content(&mut headers, Some("html/start_page.tmpl".to_string()), true, filter_prot)
+                }
+                "GET /change_ip.html HTTP/1.1" => {
+                    headers.push("HTTP/1.1 200 OK".to_string());
+                    UiServer::prepare_content(&mut headers, Some("html/change_ip.html".to_string()), false, filter_prot)
+                }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);
                     data.resize(1024, 0); 
@@ -200,11 +228,16 @@ impl UiServer {
                         log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
                         UiServer::set_dns_server(&data, filter_prot);
                     }
-                    UiServer::prepare_content("HTTP/1.1 301 Redirect\r\nLocation: /", "html/start_page.tmpl", true, filter_prot)
+                    headers.push("HTTP/1.1 301 Redirect".to_string());
+                    headers.push("Location: /".to_string());
+                    UiServer::prepare_content(&mut headers, None, false, filter_prot)
                 }
-                _ =>
-                    UiServer::prepare_content("HTTP/1.1 404 NOT FOUND", "html/404.html", false, filter_prot) 
+                _ => {
+                    headers.push("HTTP/1.1 404 NOT FOUND".to_string());
+                    UiServer::prepare_content(&mut headers, Some("html/404.html".to_string()), false, filter_prot) 
+                }
             };
+            drop(headers);
 
             stream.write_all(response.as_bytes()).unwrap();
         }
