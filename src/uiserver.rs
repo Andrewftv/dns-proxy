@@ -62,7 +62,7 @@ impl UiServer {
         return ret_string;
     }
 
-    fn replace_tag(tag: &str, contents: &String, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn replace_tag(tag: &String, contents: &String, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
         let mut new_contents: String;
         let opt = contents.find(tag);
         if opt.is_some() {
@@ -76,7 +76,25 @@ impl UiServer {
         return new_contents;
     }
 
-    fn prepare_content(headers: &mut Vec<String>, filename: Option<String>, post_process: bool, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn find_tag(contents: &String) -> Option<String> {
+        let opt = contents.find("{#");
+        if opt.is_some() {
+            let start_pos = opt.unwrap();
+            let opt = contents[start_pos..contents.len()].find("}");
+            if opt.is_some() {
+                let end_pos = opt.unwrap();
+                let tag = contents[start_pos..start_pos + end_pos + 1].to_string();
+
+                return Some(tag);
+            }
+        }
+
+        return None;
+    }
+
+    fn prepare_content(headers: &mut Vec<String>, filename: Option<String>, post_process: bool,
+        filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+            
         let mut response: String = Default::default();
         let mut contents: String = Default::default();
         if filename.is_some() {
@@ -89,10 +107,14 @@ impl UiServer {
 
             let mut contents_temp = cont_res.unwrap();
             if post_process {
-                contents_temp = UiServer::replace_tag("{#ENTRIES}", &contents_temp, filter_prot);
-                contents_temp = UiServer::replace_tag("{#LISTEN}", &contents_temp, filter_prot);
-                contents_temp = UiServer::replace_tag("{#DNSSRV}", &contents_temp, filter_prot);
-                contents_temp = UiServer::replace_tag("{#UPDATE_DATE}", &contents_temp, filter_prot);
+                loop {
+                    let tag_opt = UiServer::find_tag(&contents_temp);
+                    if tag_opt.is_none() {
+                        break;
+                    }
+                    let tag = tag_opt.unwrap();
+                    contents_temp = UiServer::replace_tag(&tag, &contents_temp, filter_prot);
+                }
             }
             contents = contents_temp;
             let length = contents.len();
