@@ -12,18 +12,63 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use curl::easy::{Easy, List};
+use std::io::Read;
 use uiserver::UiServer;
 
 struct DnsProxy {
     pub running: Arc<AtomicBool>,
+    pub curl: Arc<Mutex<Easy>>,
 }
 
 impl DnsProxy {
     pub fn new() -> DnsProxy {
+        let mut curl = Easy::new();
+        let _ = curl.post(true);
+        let mut list = List::new();
+        let _ = list.append("content-type: application/dns-message");
+        let _ = curl.http_headers(list);
+        let curl_guard = Arc::new(Mutex::new(curl));
         DnsProxy
         {
             running: Arc::new(AtomicBool::new(true)),
+            curl: curl_guard,
         }
+    }
+     
+    fn lookup_https(dns_server: std::net::SocketAddr, dns_req_pack : &Vec<u8>, shared_curl: &Arc<Mutex<Easy>>) -> Result<Vec<u8>, std::io::Error> {
+        let mut curl = shared_curl.lock().unwrap();
+        let url = format!("https://{}/dns-query", dns_server.ip().to_string());
+        let mut res = curl.url(&url);
+        if res.is_err() {
+            return Err(res.err().unwrap().into());
+        }
+        res = curl.post_field_size(dns_req_pack.len() as u64);
+        if res.is_err() {
+            return Err(res.err().unwrap().into());
+        }
+        let mut data: &[u8] = dns_req_pack.as_slice();
+        let mut transfer = curl.transfer();
+
+        let dns_response_guard  = Arc::new(Mutex::new(Vec::<u8>::new()));
+        dns_response_guard.lock().unwrap().resize(512, 0);
+        
+        transfer.read_function(|buff| {
+            Ok(data.read(buff).unwrap_or(0))
+        }).unwrap();
+        let dns_response: Arc<Mutex<Vec<u8>>> = Arc::clone(&dns_response_guard);
+        transfer.write_function(move |data| {
+            *dns_response.lock().unwrap() = data.to_vec();
+            Ok(data.len())
+        }).unwrap();
+        res = transfer.perform();
+        if res.is_err() {
+            return Err(res.err().unwrap().into());
+        }
+
+        let ret = dns_response_guard.lock().unwrap(); 
+
+        Ok(ret.to_vec())
     }
 
     fn lookup(dns_server: std::net::SocketAddr, dns_req_pack : &Vec<u8>) -> Result<Vec<u8>, std::io::Error> {
@@ -50,7 +95,7 @@ impl DnsProxy {
         let mut offset: usize = 12;
         let mut len : u8 = dns_req_pack[offset];
         let mut name : &str;
-        let mut ask_name : String = "".to_owned();
+        let mut ask_name : String = Default::default();
         while len != 0 {
             name = std::str::from_utf8(&dns_req_pack[offset + 1..offset + 1 + len as usize]).unwrap();
             ask_name = ask_name + name;
@@ -71,16 +116,20 @@ impl DnsProxy {
     }
 
     fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : std::net::SocketAddr, 
-        shared_filter : &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
+        shared_filter : &Arc<Mutex<FilterConfig>>, shared_curl: &Arc<Mutex<Easy>>) -> Result<(), std::io::Error> {
         let asked_name = DnsProxy::get_asked_string(dns_req_pack);
         let mut filter_config = shared_filter.lock().unwrap();
         let dns_srv_addr = filter_config.get_dns_srv_addr();
-
-        log_info!("Ask for: {}", asked_name);
-
+        let use_doh = filter_config.get_use_doh();
         let dns_response : Vec<u8>;
-        if filter_config.search(&asked_name) {
-            drop(filter_config);
+        let (is_found, reject_count) = filter_config.search(&asked_name);
+        let mut log_string: String = Default::default();
+        if !is_found || reject_count == 1 {
+            //log_info!("Ask for: {}", asked_name);
+            log_string = format!("Ask for: {}", asked_name);
+        }
+        drop(filter_config);
+        if is_found {
             let mut reject_buff : [u8; 12] = [0; 12];
             // Copy ID field
             reject_buff[0] = dns_req_pack[0];
@@ -91,17 +140,30 @@ impl DnsProxy {
             reject_buff[3] = 3; /* NOT EXIST */
 
             dns_response = reject_buff.to_vec();
-            log_print!("   \x1b[31m[rejected]\x1b[0m\n");
+            if reject_count == 1 {
+                //log_print!("   \x1b[31m[rejected]\x1b[0m\n");
+                log_string += "   \x1b[31m[rejected]\x1b[0m\n";
+            }
         } else {
-            drop(filter_config);
-            let lookup_result = DnsProxy::lookup(dns_srv_addr, dns_req_pack);
+            let lookup_result: Result<Vec<u8>, Error>;
+            if use_doh {
+                lookup_result = DnsProxy::lookup_https(dns_srv_addr, dns_req_pack, shared_curl);
+            } else {
+                lookup_result = DnsProxy::lookup(dns_srv_addr, dns_req_pack);
+            }
+
             if lookup_result.is_err() {
                 return Err(lookup_result.err().unwrap());
             }
             dns_response = lookup_result.unwrap();
-            log_print!("   \x1b[32m[allowed]\x1b[0m\n");
+            if !is_found {
+                //log_print!("   \x1b[32m[allowed]\x1b[0m\n");
+                log_string += "   \x1b[32m[allowed]\x1b[0m\n";
+            }
         }
-
+        if !is_found || reject_count == 1 {
+            log_info!(&log_string);
+        }
         //log_debug!("Sending {} bytes\n", dns_response.len());
         let send_result = socket.send_to(&dns_response, ip_addr);
         if send_result.is_err() {
@@ -163,9 +225,10 @@ impl DnsProxy {
             }
             let (dns_req_pack, ip_addr) = listen_result.unwrap();
             let shared_filter = Arc::clone(filter_prot);
+            let shared_curl = Arc::clone(&self.curl);
             tpool.execute(move || {
                 // Handle the request
-                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &shared_filter);
+                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &shared_filter, &shared_curl);
                 // Not sure if we realy need this call
                 drop(dns_req_pack);
                 if query_result.is_err() {

@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, IpAddr};
 use std::str;
 use crate::log_info;
-use crate::log_print;
 use crate::log_debug;
 #[cfg(feature = "filter_update")]
 use crate::log_error;
@@ -26,6 +25,7 @@ pub enum FilterType {
 #[derive(Clone)]
 struct Statistics {
     requests : u64,
+    #[allow(dead_code)]
     filter_type: FilterType,
 }
 
@@ -34,12 +34,13 @@ impl Statistics {
         Statistics { requests : 0, filter_type: ftype }
     }
 
-    pub fn inc_request_count(&mut self) {
+    pub fn inc_request_count(&mut self) -> u64 {
         self.requests += 1;
+        return self.requests;
     }
-
-    pub fn get_request_count(&self) -> &u64 {
-        return &self.requests;
+    #[allow(dead_code)]
+    pub fn get_filter_type(&self) -> &FilterType {
+        return &self.filter_type;
     }
 }
 
@@ -47,6 +48,7 @@ pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
     bind_addr: std::net::SocketAddr,
     dns_srv_addr: std::net::SocketAddr,
+    use_doh: bool
 }
 
 impl FilterConfig {
@@ -56,8 +58,13 @@ impl FilterConfig {
         {
             ads_provider_list: BTreeMap::new(),
             bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 2053),
-            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 53),
+            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
+            use_doh: true
         }
+    }
+
+    pub fn get_use_doh(&self) -> bool {
+        return self.use_doh;
     }
 
     pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
@@ -181,23 +188,15 @@ impl FilterConfig {
         return true;
     }
 
-    pub fn search(&mut self, key : &String) -> bool {
+    pub fn search(&mut self, key : &String) -> (bool, u64) {
         let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
-            return false;
+            return (false, 0);
         }
         let stat  = stat_opt.unwrap();
-        stat.inc_request_count();
-        let stat_clone = stat.clone();
-        let ftype_str: &str;
-        if stat_clone.filter_type == FilterType::Global {
-            ftype_str = "[G]";
-        } else {
-            ftype_str = "[L]";
-        } 
-        log_print!(" {}[requested {} times]", ftype_str, stat_clone.get_request_count());
+        let reject_count = stat.inc_request_count();
 
-        return true;
+        return (true, reject_count);
     }
 
     pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {
