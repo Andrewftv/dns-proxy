@@ -44,6 +44,11 @@ impl Statistics {
     }
 }
 
+pub enum FilterUpdateStatus {
+    Unchanged,
+    Updated
+}
+
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
     bind_addr: std::net::SocketAddr,
@@ -57,7 +62,7 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 2053),
             /* Default google DNS */
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
@@ -155,40 +160,42 @@ impl FilterConfig {
     }
 
     #[cfg(feature = "filter_update")]
-    pub fn check_update(&self) -> bool {
+    pub fn check_update(&self) -> Result<FilterUpdateStatus, curl::Error> {
         // Get remote file length
         let mut curl = Easy::new();
-        if curl.url("https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt").is_err() {
+        let res = curl.url("https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt"); 
+        if res.is_err() {
             log_error!("Invalid URL\n");
-            return false;
+            return Err(res.err().unwrap());
         }
         let res = self.get_remote_file_length(&mut curl);
         if res.is_err() {
-            return false;
+            log_error!("Unable to get remote file length\n");
+            return Err(res.err().unwrap());
         }
         let remote_size = res.unwrap();
         log_info!("Remote file length: {}\n", remote_size);
-        drop(curl);
+        //drop(curl);
 
         let res = self.get_local_file_length();
         if res.is_ok() {
             let local_size = res.unwrap();
             if local_size == remote_size {
                 log_info!("Remote file unchanged\n");
-                return true; 
+                return Ok(FilterUpdateStatus::Unchanged);
             }
         }
         // Get content
-        let mut curl = Easy::new();
-        if curl.url("https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt").is_err() {
-            log_error!("Invalid URL\n");
-            return false;
-        }
+        //let mut curl = Easy::new();
+        //if curl.url("https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt").is_err() {
+        //    log_error!("Invalid URL\n");
+        //    return false;
+        //}
         log_info!("Download new file\n");
         let mut file = File::create("blocklist.txt");
         if file.is_err() {
             log_error!("Unable to create file\n");
-            return false;
+            return Err(curl::Error::new(file.err().unwrap().kind() as u32));
         }
 
         curl.write_function(move |data| {
@@ -197,13 +204,13 @@ impl FilterConfig {
 
             Ok(data.len())
         }).unwrap();
-
-        if curl.perform().is_err() {
+        let res = curl.perform();
+        if res.is_err() {
             log_error!("Unanle to get content\n");
-            return false;
+            return Err(res.err().unwrap());
         }
 
-        return true;
+        return Ok(FilterUpdateStatus::Updated);
     }
 
     pub fn search(&mut self, key : &String) -> (bool, u64) {
@@ -215,6 +222,12 @@ impl FilterConfig {
         let reject_count = stat.inc_request_count();
 
         return (true, reject_count);
+    }
+
+    pub fn reload_filter(&mut self) -> Result<(), std::io::Error> {
+        self.ads_provider_list.clear();
+
+        return self.create_black_list_map();
     }
 
     pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {

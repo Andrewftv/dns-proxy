@@ -287,7 +287,7 @@ fn main() -> Result<(), std::io::Error>
     #[cfg(feature = "filter_update")]
     log_info!("Check for updates...\n");
     #[cfg(feature = "filter_update")]
-    filter_cfg.check_update();
+    let _ = filter_cfg.check_update();
     #[cfg(feature = "filter_update")]
     log_debug!("Check finished\n");
 

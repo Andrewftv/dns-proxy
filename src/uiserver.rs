@@ -346,6 +346,25 @@ impl UiServer {
                     self.set_response_hdr("HTTP/1.1 200 OK".to_string());
                     self.prepare_content(Some("html/statistics.html".to_string()), true, filter_prot)
                 }
+                "GET /reload_filter HTTP/1.1" => {
+                    let mut filter = filter_prot.lock().unwrap();
+                    let _ = filter.reload_filter();
+                    drop(filter);
+                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_response_hdr("Location: /".to_string());
+                    self.prepare_content(None, false, filter_prot)
+                }
+                "GET /update_filter HTTP/1.1" => {
+                    let mut filter = filter_prot.lock().unwrap();
+                    let res = filter.check_update();
+                    if res.is_ok() {
+                        let _ = filter.reload_filter();
+                    }
+                    drop(filter);
+                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_response_hdr("Location: /".to_string());
+                    self.prepare_content(None, false, filter_prot)
+                }
                 _ => {
                     self.set_response_hdr("HTTP/1.1 404 NOT FOUND".to_string());
                     self.prepare_content(Some("html/404.html".to_string()), false, filter_prot) 
