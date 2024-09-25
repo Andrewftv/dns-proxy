@@ -10,8 +10,24 @@ use chrono::{DateTime, Local};
 use crate::{log_error, log_debug, log_info};
 use crate::filter::FilterConfig;
 
+struct PostParams {
+    name: String,
+    value: String
+}
+
+impl PostParams {
+    pub fn new(name: String, value: String) -> PostParams {
+        PostParams
+        {
+            name: name,
+            value: value
+        }
+    }
+}
+
 pub struct UiServer {
     pub running: Arc<AtomicBool>,
+    response_hdrs: Vec<String>
 }
 
 impl UiServer {
@@ -19,6 +35,7 @@ impl UiServer {
         UiServer
         {
             running: Arc::new(AtomicBool::new(true)),
+            response_hdrs: vec![]
         }
     }
 
@@ -38,9 +55,16 @@ impl UiServer {
             }
             "{#DNSSRV}" => {
                 let filter = filter_prot.lock().unwrap();
+                let use_doh = filter.get_use_doh();
                 let dns_srv_addr = filter.get_dns_srv_addr();
                 drop(filter);
-                dns_srv_addr.to_string()
+                
+                let addr_port_str = if use_doh {
+                    dns_srv_addr.ip().to_string() + ":DNS over HTTPS"
+                } else {
+                    dns_srv_addr.to_string()    
+                };
+                addr_port_str
             }
             "{#UPDATE_DATE}" => {
                 let mut update_str: String = Default::default();
@@ -55,6 +79,23 @@ impl UiServer {
                     }
                 }
                 update_str
+            }
+            "{#USE_DOH}" => {
+                let filter = filter_prot.lock().unwrap();
+                let use_doh = filter.get_use_doh();
+                drop(filter);
+                let use_doh_str = if use_doh {
+                    "checked".to_string()
+                } else {
+                    "unchecked".to_string()
+                };
+                use_doh_str
+            }
+            "{#REJECT_STATISTICS}" => {
+                let filter = filter_prot.lock().unwrap();
+                let stat_str = filter.prepare_stat_data();
+                drop(filter);
+                stat_str
             }
             _=> Default::default(),
         };
@@ -92,7 +133,7 @@ impl UiServer {
         return None;
     }
 
-    fn prepare_content(headers: &mut Vec<String>, filename: Option<String>, post_process: bool,
+    fn prepare_content(&mut self, filename: Option<String>, post_process: bool,
         filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
             
         let mut response: String = Default::default();
@@ -119,11 +160,11 @@ impl UiServer {
             contents = contents_temp;
             let length = contents.len();
             let contents_len_hdr = format!("Content-Length: {}", length);
-            headers.push(contents_len_hdr);
+            self.set_response_hdr(contents_len_hdr);
         }
 
-        for index in 0..headers.len() {
-            response += &headers[index];
+        for hdr in self.response_hdrs.iter() {
+            response += hdr;
             response += "\r\n";
         }
         response += "\r\n";
@@ -158,36 +199,81 @@ impl UiServer {
         return Ok(bytes.len());
     }
 
-    fn set_dns_server(data: &Vec<u8>, filter_prot: &Arc<Mutex<FilterConfig>>) -> bool {
-        let mut data_str: String = String::from_utf8(data.to_vec()).unwrap();
-        let mut opt = data_str.find("dns_ipaddr");
-        if opt.is_none() {
-            return false;
-        }
-        opt = data_str.find("=");
-        if opt.is_none() {
-            return false;
-        }
-        let mut offset = opt.unwrap();
-        offset += 1;
-        let param = data_str.split_off(offset);
-        log_debug!("PARAM: {}\n", param);
+    fn set_response_hdr(&mut self, value: String) {
+        self.response_hdrs.push(value);
+    }
 
-        let temp = param.parse::<std::net::Ipv4Addr>();
-        if temp.is_err() {
-            log_error!("Error parsing IP address string\n");
-            return false;
+    fn clear_response_hdrs(&mut self) {
+        self.response_hdrs.clear();
+    }
+
+    fn parse_post_params(data: &Vec<u8>) -> Option<Vec<PostParams>> {
+        let mut start_offset = 0;
+        let mut end_offset = 0;
+        let mut opt;
+        let mut ret_vec: Vec<PostParams> = Vec::new();
+        let data_str: String = String::from_utf8(data.to_vec()).unwrap();
+        while end_offset < data_str.len() {
+            opt = data_str[start_offset..data_str.len()].find('&');
+            if opt.is_some() {
+                end_offset = opt.unwrap();
+            } else {
+                end_offset = data_str.len();
+            }
+            let name_value = &data_str[start_offset..end_offset];
+            let opt = name_value.find('=');
+            if opt.is_none() {
+                continue;
+            }
+            let eq_offset = opt.unwrap();
+            let param = PostParams::new(name_value[0..eq_offset].to_string(),
+                name_value[eq_offset + 1..name_value.len()].to_string());
+            ret_vec.push(param);
+            start_offset = end_offset + 1;
+        }
+        if ret_vec.is_empty() {
+            return None;
         }
 
-        let addr: std::net::SocketAddr = std::net::SocketAddr::new(std::net::IpAddr::V4(temp.unwrap()), 53);
-        let mut filter = filter_prot.lock().unwrap();
+        return Some(ret_vec);
+    }
 
-        filter.set_dns_srv_addr(addr);
+    fn set_post_param(params: &Vec<PostParams>, filter_prot: &Arc<Mutex<FilterConfig>>) -> bool {
+        for param in params.iter() {
+            log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
+
+            match &param.name[..] {
+                "dns_ipaddr" => {
+                    let res = param.value.parse::<std::net::Ipv4Addr>();
+                    if res.is_err() {
+                        log_error!("Error parsing IP address string\n");
+                        return false;
+                    }
+                    let addr: std::net::SocketAddr = std::net::SocketAddr::new(std::net::IpAddr::V4(res.unwrap()), 53);
+                    let mut filter = filter_prot.lock().unwrap();
+                    filter.set_dns_srv_addr(addr);
+                    drop(filter);
+                }
+                "use_doh" => {
+                    let res = param.value.parse::<bool>();
+                    if res.is_err() {
+                        log_error!("Error parsing use_doh\n");
+                        return false;
+                    }
+                    let mut filter = filter_prot.lock().unwrap();
+                    filter.set_use_doh(res.unwrap());
+                    drop(filter);
+                }
+                _ => {
+                    log_error!("Unexpected parameter: {}\n", param.name);
+                }
+            };
+        }
 
         return true;
     }
 
-    pub fn start_gui_server(&self, filter_prot: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
+    pub fn start_gui_server(&mut self, filter_prot: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         let res = TcpListener::bind("127.0.0.1:8080");
         if res.is_err() {
             log_error!("Unable to bind TCP socket\n");
@@ -231,15 +317,14 @@ impl UiServer {
             }
             log_debug!("Request for: {}\n", tags[0]);
 
-            let mut headers: Vec<String> = vec![];
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
-                    headers.push("HTTP/1.1 200 OK".to_string());
-                    UiServer::prepare_content(&mut headers, Some("html/start_page.tmpl".to_string()), true, filter_prot)
+                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.prepare_content(Some("html/start_page.html".to_string()), true, filter_prot)
                 }
                 "GET /change_ip.html HTTP/1.1" => {
-                    headers.push("HTTP/1.1 200 OK".to_string());
-                    UiServer::prepare_content(&mut headers, Some("html/change_ip.html".to_string()), false, filter_prot)
+                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.prepare_content(Some("html/change_ip.html".to_string()), true, filter_prot)
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);
@@ -248,19 +333,25 @@ impl UiServer {
                     if res.is_ok() {
                         data.truncate(res.unwrap());
                         log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
-                        UiServer::set_dns_server(&data, filter_prot);
+                        let opt = UiServer::parse_post_params(&data);
+                        if opt.is_some() {
+                            UiServer::set_post_param(&opt.unwrap(), filter_prot);
+                        }
                     }
-                    headers.push("HTTP/1.1 301 Redirect".to_string());
-                    headers.push("Location: /".to_string());
-                    UiServer::prepare_content(&mut headers, None, false, filter_prot)
+                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_response_hdr("Location: /".to_string());
+                    self.prepare_content(None, false, filter_prot)
+                }
+                "GET /statistics.html HTTP/1.1" => {
+                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.prepare_content(Some("html/statistics.html".to_string()), true, filter_prot)
                 }
                 _ => {
-                    headers.push("HTTP/1.1 404 NOT FOUND".to_string());
-                    UiServer::prepare_content(&mut headers, Some("html/404.html".to_string()), false, filter_prot) 
+                    self.set_response_hdr("HTTP/1.1 404 NOT FOUND".to_string());
+                    self.prepare_content(Some("html/404.html".to_string()), false, filter_prot) 
                 }
             };
-            drop(headers);
-
+            self.clear_response_hdrs();
             stream.write_all(response.as_bytes()).unwrap();
         }
 

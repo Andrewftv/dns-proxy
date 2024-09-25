@@ -57,14 +57,33 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 2053),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 53),
+            /* Default google DNS */
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
+            /* Use DNS over HTTPS */
             use_doh: true
         }
     }
 
+    pub fn prepare_stat_data(&self) -> String {
+        let mut ret_str: String = Default::default();
+        for (key, value) in self.ads_provider_list.iter() {
+            if value.requests > 0 {
+                ret_str += key;
+                ret_str += ": ";
+                ret_str += &value.requests.to_string();
+                ret_str += "<br>";
+            }
+        }
+        return ret_str;
+    }
+
     pub fn get_use_doh(&self) -> bool {
         return self.use_doh;
+    }
+
+    pub fn set_use_doh(&mut self, value: bool) {
+        self.use_doh = value;
     }
 
     pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
@@ -165,7 +184,6 @@ impl FilterConfig {
             log_error!("Invalid URL\n");
             return false;
         }
-
         log_info!("Download new file\n");
         let mut file = File::create("blocklist.txt");
         if file.is_err() {

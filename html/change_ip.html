@@ -6,10 +6,28 @@
   </head>
   <body>
     <h1>Change IP address</h1>
-    <form action="/dns_change_ip" method="post">
-        <lable for="fipaddr">New IP:</lable>
-        <input type="text" id="dns_ipaddr" name="dns_ipaddr"><br>
-        <input type="submit" value="Sbmit">
+    <form action="/dns_change_ip" id="submit_form_id" method="post">
+        <div><lable for="fipaddr">New IP:</lable>
+        <input type="text" id="dns_ipaddr" name="dns_ipaddr"></div><br>
+        <div><lable for="use_doh"> Use DNS over HTTPS</lable>
+        <input type="checkbox" id="use_doh" name="use_doh" onclick="add_hidden_element()" value="true" {#USE_DOH}></div><br>
+        <input type="submit" id="submit_btn_id" value="Sbmit">
     </form>
+    <script>
+      function add_hidden_element() {
+        var checkbox = document.getElementById("use_doh");
+        if (checkbox.checked) {
+          var elem = document.getElementById("use_doh_hidden");
+          elem.remove();
+        } else {
+          var elem = document.createElement("input");
+          elem.setAttribute("type", "hidden");
+          elem.setAttribute("id", "use_doh_hidden");
+          elem.setAttribute("value", "false");
+          elem.setAttribute("name", "use_doh");
+          document.getElementById("submit_form_id").appendChild(elem);
+        }
+      }
+    </script>
   </body>
 </html>

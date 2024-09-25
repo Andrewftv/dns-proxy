@@ -36,7 +36,8 @@ impl DnsProxy {
         }
     }
      
-    fn lookup_https(dns_server: std::net::SocketAddr, dns_req_pack : &Vec<u8>, shared_curl: &Arc<Mutex<Easy>>) -> Result<Vec<u8>, std::io::Error> {
+    fn lookup_https(dns_server: std::net::SocketAddr, dns_req_pack : &Vec<u8>, shared_curl: &Arc<Mutex<Easy>>) -> 
+        Result<Vec<u8>, std::io::Error> {
         let mut curl = shared_curl.lock().unwrap();
         let url = format!("https://{}/dns-query", dns_server.ip().to_string());
         let mut res = curl.url(&url);
@@ -280,7 +281,7 @@ fn main() -> Result<(), std::io::Error>
     let (tx_proxy, rx_proxy) = mpsc::channel();
     let (tx_ui, rx_ui) = mpsc::channel();
     let dns_proxy_server = DnsProxy::new();
-    let ui_server = UiServer::new();
+    let mut ui_server = UiServer::new();
     let mut filter_cfg: FilterConfig = FilterConfig::new();
 
     #[cfg(feature = "filter_update")]
