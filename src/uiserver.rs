@@ -351,6 +351,7 @@ impl UiServer {
                     let _ = filter.reload_filter();
                     drop(filter);
                     self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_response_hdr("Cache-Control: no-cache".to_string());
                     self.set_response_hdr("Location: /".to_string());
                     self.prepare_content(None, false, filter_prot)
                 }
@@ -362,6 +363,7 @@ impl UiServer {
                     }
                     drop(filter);
                     self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_response_hdr("Cache-Control: no-cache".to_string());
                     self.set_response_hdr("Location: /".to_string());
                     self.prepare_content(None, false, filter_prot)
                 }
