@@ -196,7 +196,10 @@ impl FilterConfig {
         let mut file = File::create("blocklist.txt");
         if file.is_err() {
             log_error!("Unable to create file\n");
+            #[cfg(target_os = "windows")]
             return Err(curl::Error::new(file.err().unwrap().kind() as i32));
+            #[cfg(target_os = "linux")]
+            return Err(curl::Error::new(file.err().unwrap().kind() as u32));
         }
 
         curl.write_function(move |data| {

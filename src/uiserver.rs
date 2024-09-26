@@ -27,6 +27,7 @@ impl PostParams {
 
 pub struct UiServer {
     pub running: Arc<AtomicBool>,
+    status_code: String,
     response_hdrs: Vec<String>
 }
 
@@ -35,6 +36,7 @@ impl UiServer {
         UiServer
         {
             running: Arc::new(AtomicBool::new(true)),
+            status_code: Default::default(),
             response_hdrs: vec![]
         }
     }
@@ -162,7 +164,11 @@ impl UiServer {
             let contents_len_hdr = format!("Content-Length: {}", length);
             self.set_response_hdr(contents_len_hdr);
         }
-
+        if self.status_code.is_empty() {
+            log_error!("HTTP status code not set\n");
+        }
+        response = self.get_status_code().to_string();
+        response += "\r\n";
         for hdr in self.response_hdrs.iter() {
             response += hdr;
             response += "\r\n";
@@ -197,6 +203,14 @@ impl UiServer {
         let _ = buff.write_all(bytes);
 
         return Ok(bytes.len());
+    }
+
+    fn get_status_code(&self) -> &String {
+        return &self.status_code;
+    }
+
+    fn set_status_code(&mut self, status: String) {
+        self.status_code = status;
     }
 
     fn set_response_hdr(&mut self, value: String) {
@@ -297,7 +311,7 @@ impl UiServer {
                 return Err(stream.err().unwrap());
             }
             let mut stream = stream.unwrap();
-            let _ = stream.set_nonblocking(true);
+            let _ = stream.set_nonblocking(true); /* Fix strange behaviour of linux chromium */
             // Read request contents
             let mut buff = Vec::with_capacity(1024);
             buff.resize(1024, 0);
@@ -320,11 +334,11 @@ impl UiServer {
 
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
-                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.set_status_code("HTTP/1.1 200 OK".to_string());
                     self.prepare_content(Some("html/start_page.html".to_string()), true, filter_prot)
                 }
                 "GET /change_ip.html HTTP/1.1" => {
-                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.set_status_code("HTTP/1.1 200 OK".to_string());
                     self.prepare_content(Some("html/change_ip.html".to_string()), true, filter_prot)
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
@@ -339,19 +353,19 @@ impl UiServer {
                             UiServer::set_post_param(&opt.unwrap(), filter_prot);
                         }
                     }
-                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
                     self.set_response_hdr("Location: /".to_string());
                     self.prepare_content(None, false, filter_prot)
                 }
                 "GET /statistics.html HTTP/1.1" => {
-                    self.set_response_hdr("HTTP/1.1 200 OK".to_string());
+                    self.set_status_code("HTTP/1.1 200 OK".to_string());
                     self.prepare_content(Some("html/statistics.html".to_string()), true, filter_prot)
                 }
                 "GET /reload_filter HTTP/1.1" => {
                     let mut filter = filter_prot.lock().unwrap();
                     let _ = filter.reload_filter();
                     drop(filter);
-                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
                     self.set_response_hdr("Cache-Control: no-cache".to_string());
                     self.set_response_hdr("Location: /".to_string());
                     self.prepare_content(None, false, filter_prot)
@@ -363,16 +377,17 @@ impl UiServer {
                         let _ = filter.reload_filter();
                     }
                     drop(filter);
-                    self.set_response_hdr("HTTP/1.1 301 Redirect".to_string());
+                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
                     self.set_response_hdr("Cache-Control: no-cache".to_string());
                     self.set_response_hdr("Location: /".to_string());
                     self.prepare_content(None, false, filter_prot)
                 }
                 _ => {
-                    self.set_response_hdr("HTTP/1.1 404 NOT FOUND".to_string());
+                    self.set_status_code("HTTP/1.1 404 NOT FOUND".to_string());
                     self.prepare_content(Some("html/404.html".to_string()), false, filter_prot) 
                 }
             };
+            self.status_code.clear();
             self.clear_response_hdrs();
             stream.write_all(response.as_bytes()).unwrap();
         }
