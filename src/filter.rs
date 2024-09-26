@@ -44,6 +44,7 @@ impl Statistics {
     }
 }
 
+#[derive(PartialEq)]
 pub enum FilterUpdateStatus {
     Unchanged,
     Updated

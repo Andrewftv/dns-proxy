@@ -8,7 +8,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 
 use crate::{log_error, log_debug, log_info};
-use crate::filter::FilterConfig;
+use crate::filter::{FilterConfig, FilterUpdateStatus};
 
 struct PostParams {
     name: String,
@@ -297,6 +297,7 @@ impl UiServer {
                 return Err(stream.err().unwrap());
             }
             let mut stream = stream.unwrap();
+            let _ = stream.set_nonblocking(true);
             // Read request contents
             let mut buff = Vec::with_capacity(1024);
             buff.resize(1024, 0);
@@ -357,7 +358,7 @@ impl UiServer {
                 "GET /update_filter HTTP/1.1" => {
                     let mut filter = filter_prot.lock().unwrap();
                     let res = filter.check_update();
-                    if res.is_ok() {
+                    if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
                         let _ = filter.reload_filter();
                     }
                     drop(filter);
