@@ -41,22 +41,22 @@ impl UiServer {
         }
     }
 
-    fn get_data_by_tag(tag: &str, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn get_data_by_tag(tag: &str, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
         let ret_string: String = match tag {
             "{#ENTRIES}" => {
-                let filter = filter_prot.lock().unwrap();
+                let filter = mfilter.lock().unwrap();
                 let entries = filter.get_num_entries();
                 drop(filter);
                 entries.to_string()
             }
             "{#LISTEN}" => {
-                let filter = filter_prot.lock().unwrap();
+                let filter = mfilter.lock().unwrap();
                 let listen_addr = filter.get_bind_addr();
                 drop(filter);
                 listen_addr.to_string()
             }
             "{#DNSSRV}" => {
-                let filter = filter_prot.lock().unwrap();
+                let filter = mfilter.lock().unwrap();
                 let use_doh = filter.get_use_doh();
                 let dns_srv_addr = filter.get_dns_srv_addr();
                 drop(filter);
@@ -83,7 +83,7 @@ impl UiServer {
                 update_str
             }
             "{#USE_DOH}" => {
-                let filter = filter_prot.lock().unwrap();
+                let filter = mfilter.lock().unwrap();
                 let use_doh = filter.get_use_doh();
                 drop(filter);
                 let use_doh_str = if use_doh {
@@ -94,7 +94,7 @@ impl UiServer {
                 use_doh_str
             }
             "{#REJECT_STATISTICS}" => {
-                let filter = filter_prot.lock().unwrap();
+                let filter = mfilter.lock().unwrap();
                 let stat_str = filter.prepare_stat_data();
                 drop(filter);
                 stat_str
@@ -105,13 +105,13 @@ impl UiServer {
         return ret_string;
     }
 
-    fn replace_tag(tag: &String, contents: &String, filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn replace_tag(tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
         let mut new_contents: String;
         let opt = contents.find(tag);
         if opt.is_some() {
             let offset = opt.unwrap();
             new_contents = contents[0..offset].to_string();
-            new_contents += &UiServer::get_data_by_tag(tag, filter_prot);
+            new_contents += &UiServer::get_data_by_tag(tag, mfilter);
             new_contents += &contents[offset + tag.len()..contents.len()].to_string();
         } else {
             new_contents = contents.to_string();
@@ -135,13 +135,12 @@ impl UiServer {
         return None;
     }
 
-    fn prepare_content(&mut self, filename: Option<String>, post_process: bool,
-        filter_prot: &Arc<Mutex<FilterConfig>>) -> String {
+    fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
             
         let mut response: String = Default::default();
         let mut contents: String = Default::default();
         if filename.is_some() {
-            let name: &String = &filename.unwrap();
+            let name: &str = filename.unwrap();
             let cont_res = std::fs::read_to_string(name);
             if cont_res.is_err() {
                 log_error!("Unable to open {}\n", name);
@@ -156,13 +155,13 @@ impl UiServer {
                         break;
                     }
                     let tag = tag_opt.unwrap();
-                    contents_temp = UiServer::replace_tag(&tag, &contents_temp, filter_prot);
+                    contents_temp = UiServer::replace_tag(&tag, &contents_temp, mfilter);
                 }
             }
             contents = contents_temp;
             let length = contents.len();
             let contents_len_hdr = format!("Content-Length: {}", length);
-            self.set_response_hdr(contents_len_hdr);
+            self.set_response_hdr(&contents_len_hdr);
         }
         if self.status_code.is_empty() {
             log_error!("HTTP status code not set\n");
@@ -209,12 +208,12 @@ impl UiServer {
         return &self.status_code;
     }
 
-    fn set_status_code(&mut self, status: String) {
-        self.status_code = status;
+    fn set_status_code(&mut self, status: &str) {
+        self.status_code = status.to_string();
     }
 
-    fn set_response_hdr(&mut self, value: String) {
-        self.response_hdrs.push(value);
+    fn set_response_hdr(&mut self, value: &str) {
+        self.response_hdrs.push(value.to_string());
     }
 
     fn clear_response_hdrs(&mut self) {
@@ -252,7 +251,7 @@ impl UiServer {
         return Some(ret_vec);
     }
 
-    fn set_post_param(params: &Vec<PostParams>, filter_prot: &Arc<Mutex<FilterConfig>>) -> bool {
+    fn set_post_param(params: &Vec<PostParams>, mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
         for param in params.iter() {
             log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
 
@@ -264,7 +263,7 @@ impl UiServer {
                         return false;
                     }
                     let addr: std::net::SocketAddr = std::net::SocketAddr::new(std::net::IpAddr::V4(res.unwrap()), 53);
-                    let mut filter = filter_prot.lock().unwrap();
+                    let mut filter = mfilter.lock().unwrap();
                     filter.set_dns_srv_addr(addr);
                     drop(filter);
                 }
@@ -274,7 +273,7 @@ impl UiServer {
                         log_error!("Error parsing use_doh\n");
                         return false;
                     }
-                    let mut filter = filter_prot.lock().unwrap();
+                    let mut filter = mfilter.lock().unwrap();
                     filter.set_use_doh(res.unwrap());
                     drop(filter);
                 }
@@ -287,7 +286,7 @@ impl UiServer {
         return true;
     }
 
-    pub fn start_gui_server(&mut self, filter_prot: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
+    pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         let res = TcpListener::bind("127.0.0.1:8080");
         if res.is_err() {
             log_error!("Unable to bind TCP socket\n");
@@ -317,7 +316,12 @@ impl UiServer {
             buff.resize(1024, 0);
             let res = stream.read(&mut buff);
             if res.is_err() {
-                continue;
+                let error = res.err().unwrap();
+                if error.kind() == ErrorKind::WouldBlock {
+                    continue;
+                }
+                log_error!("Read TCP stream failed\n");
+                return Err(error);
             }
             let size = res.unwrap();
             buff.truncate(size);
@@ -334,12 +338,12 @@ impl UiServer {
 
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK".to_string());
-                    self.prepare_content(Some("html/start_page.html".to_string()), true, filter_prot)
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/start_page.html"), true, mfilter)
                 }
                 "GET /change_ip.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK".to_string());
-                    self.prepare_content(Some("html/change_ip.html".to_string()), true, filter_prot)
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/change_ip.html"), true, mfilter)
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);
@@ -350,41 +354,45 @@ impl UiServer {
                         log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
                         let opt = UiServer::parse_post_params(&data);
                         if opt.is_some() {
-                            UiServer::set_post_param(&opt.unwrap(), filter_prot);
+                            UiServer::set_post_param(&opt.unwrap(), mfilter);
                         }
                     }
-                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
-                    self.set_response_hdr("Location: /".to_string());
-                    self.prepare_content(None, false, filter_prot)
+                    self.set_status_code("HTTP/1.1 301 Redirect");
+                    self.set_response_hdr("Location: /");
+                    self.prepare_content(None, false, mfilter)
                 }
                 "GET /statistics.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK".to_string());
-                    self.prepare_content(Some("html/statistics.html".to_string()), true, filter_prot)
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/statistics.html"), true, mfilter)
                 }
-                "GET /reload_filter HTTP/1.1" => {
-                    let mut filter = filter_prot.lock().unwrap();
+                "POST /reload_filter HTTP/1.1" => {
+                    let mut filter = mfilter.lock().unwrap();
                     let _ = filter.reload_filter();
                     drop(filter);
-                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
-                    self.set_response_hdr("Cache-Control: no-cache".to_string());
-                    self.set_response_hdr("Location: /".to_string());
-                    self.prepare_content(None, false, filter_prot)
+                    self.set_status_code("HTTP/1.1 301 Redirect");
+                    self.set_response_hdr("Cache-Control: no-cache");
+                    self.set_response_hdr("Location: /");
+                    self.prepare_content(None, false, mfilter)
                 }
-                "GET /update_filter HTTP/1.1" => {
-                    let mut filter = filter_prot.lock().unwrap();
+                "POST /update_filter HTTP/1.1" => {
+                    let mut filter = mfilter.lock().unwrap();
                     let res = filter.check_update();
                     if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
                         let _ = filter.reload_filter();
                     }
                     drop(filter);
-                    self.set_status_code("HTTP/1.1 301 Redirect".to_string());
-                    self.set_response_hdr("Cache-Control: no-cache".to_string());
-                    self.set_response_hdr("Location: /".to_string());
-                    self.prepare_content(None, false, filter_prot)
+                    self.set_status_code("HTTP/1.1 301 Redirect");
+                    self.set_response_hdr("Cache-Control: no-cache");
+                    self.set_response_hdr("Location: /");
+                    self.prepare_content(None, false, mfilter)
+                }
+                "GET /classes.css HTTP/1.1" => {
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/classes.css"), false, mfilter)
                 }
                 _ => {
-                    self.set_status_code("HTTP/1.1 404 NOT FOUND".to_string());
-                    self.prepare_content(Some("html/404.html".to_string()), false, filter_prot) 
+                    self.set_status_code("HTTP/1.1 404 NOT FOUND");
+                    self.prepare_content(Some("html/404.html"), false, mfilter) 
                 }
             };
             self.status_code.clear();

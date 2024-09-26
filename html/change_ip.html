@@ -3,16 +3,18 @@
   <head>
     <meta charset="utf-8">
     <title>DNS Proxy</title>
+    <link rel="stylesheet" href="classes.css" type="text/css">
   </head>
   <body>
     <h1>Change IP address</h1>
     <p><a href="/">Home</a></p>
     <form action="/dns_change_ip" id="submit_form_id" method="post">
-        <div><lable for="fipaddr">New IP:</lable>
+        <div><lable for="dns_ipaddr">New IP:</lable>
         <input type="text" id="dns_ipaddr" name="dns_ipaddr"></div><br>
         <div><lable for="use_doh"> Use DNS over HTTPS</lable>
         <input type="checkbox" id="use_doh" name="use_doh" onclick="add_hidden_element()" value="true" {#USE_DOH}></div><br>
-        <input type="submit" id="submit_btn_id" value="Sbmit">
+        <!--<input type="submit" id="submit_btn_id" value="Submit">-->
+        <button class="mysubmit">Send</button>
     </form>
     <script>
       function add_hidden_element() {

@@ -1,25 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <style>
-    a.button {
-      padding: 1px 6px;
-      border: 1px outset buttonborder;
-      border-radius: 3px;
-      color: buttontext;
-      background-color: buttonface;
-      text-decoration: none;
-      }
-    </style>
+    <link rel="stylesheet" href="classes.css" type="text/css">
     <meta charset="utf-8">
     <title>DNS Proxy</title>
   </head>
   <body>
     <h1>DNS Proxy configuration</h1>
     <p>Filter has {#ENTRIES} entries</p>
-    <p>Last update: {#UPDATE_DATE}&emsp;<a href="update_filter" class="button">Update</a>&emsp;<a href="reload_filter" class="button">Reload</a><p><br>
+    <p>Last filter update: {#UPDATE_DATE}
+      <p><form action="update_filter" method="post">
+        <lable for="update_filter_id">Update filter&emsp;</lable>
+        <button class="mysubmit" id="ipdate_filter_id">Send</button>
+      </form></p>
+      <p><form action="reload_filter" method="post">
+        <lable for="reload_filter_id">Reload filter&emsp;</lable>
+        <button class="mysubmit" id="reload_filter_id">Send</button>
+      </form></p></p>
     <p>Listen address: {#LISTEN}</p>
-    <p>DNS server: {#DNSSRV}&emsp; <a href="change_ip.html" class="button">Change</a></p><br><br>
+    <p>DNS server: {#DNSSRV}&emsp; <a href="change_ip.html" class="button">Change</a></p>
     <p><a href="statistics.html">Statistics</a></p>
   </body>
 </html>
