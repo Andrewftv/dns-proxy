@@ -11,7 +11,7 @@ opt-level = 3
 
 [dependencies]
 chrono = "0.4.38"
-curl = { version = "0.4.46", optional = true }
+curl = { version = "0.4.49", features = ["static-curl", "static-ssl"], optional = true }
 ctrlc = "3.4.5"
 
 [features]
