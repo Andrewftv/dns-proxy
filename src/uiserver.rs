@@ -287,7 +287,7 @@ impl UiServer {
     }
 
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
-        let res = TcpListener::bind("127.0.0.1:8080");
+        let res = TcpListener::bind("0.0.0.0:8080");
         if res.is_err() {
             log_error!("Unable to bind TCP socket\n");
             return Err(res.err().unwrap());

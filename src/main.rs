@@ -211,8 +211,10 @@ impl DnsProxy {
         let cfg = filter_prot.lock().unwrap();
         let bind_addr = cfg.get_bind_addr();
         drop(cfg); 
+        log_info!("Bind: {}\n", bind_addr);
         let bind_result = UdpSocket::bind(bind_addr);
         if bind_result.is_err() {
+            log_error!("Error bind: {}\n", bind_addr);
             return Err(bind_result.err().unwrap());
         }
         let sock = Arc::new(bind_result.unwrap());

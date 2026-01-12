@@ -63,7 +63,8 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 2053),
+            //bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2053),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
             /* Default google DNS */
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
@@ -115,7 +116,7 @@ impl FilterConfig {
 
         let len = Arc::clone(&rlen);
         curl.header_function(move |header| {
-            let hlen = "Content-Length";
+            let hlen = "content-length";
             let mut hstr = String::from_utf8(header.to_vec()).unwrap();
             let mut opt_pos = hstr.find(hlen);
             if opt_pos.is_some() {
