@@ -117,7 +117,7 @@ impl FilterConfig {
         let len = Arc::clone(&rlen);
         curl.header_function(move |header| {
             let hlen = "content-length";
-            let mut hstr = String::from_utf8(header.to_vec()).unwrap();
+            let mut hstr = String::from_utf8(header.to_vec()).unwrap().to_lowercase();
             let mut opt_pos = hstr.find(hlen);
             if opt_pos.is_some() {
                 opt_pos = hstr.find(":");
