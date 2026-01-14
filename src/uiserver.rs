@@ -375,12 +375,12 @@ impl UiServer {
                     self.prepare_content(None, false, mfilter)
                 }
                 "POST /update_filter HTTP/1.1" => {
-                    let mut filter = mfilter.lock().unwrap();
-                    let res = filter.check_update();
+                    let res = FilterConfig::check_update();
                     if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
+                        let mut filter = mfilter.lock().unwrap();
                         let _ = filter.reload_filter();
+                        drop(filter);
                     }
-                    drop(filter);
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /");
