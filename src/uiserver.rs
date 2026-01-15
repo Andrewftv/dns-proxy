@@ -287,6 +287,14 @@ impl UiServer {
     }
 
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
+        // DNS server already srarted. Check blocklist.txt for update
+        let res = FilterConfig::check_update();
+        if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
+            let mut filter = mfilter.lock().unwrap();
+            let _ = filter.reload_filter();
+            drop(filter);
+        }
+        // Start HTTP server
         let res = TcpListener::bind("0.0.0.0:8080");
         if res.is_err() {
             log_error!("Unable to bind TCP socket\n");

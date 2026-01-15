@@ -1,4 +1,5 @@
 /target
 blocklist.txt
 dnsdoc.txt
+docker-help.txt
 /.vscode

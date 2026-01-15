@@ -272,30 +272,16 @@ fn wait_threads(proxy_thread: &JoinHandle<()>, proxy_run: &Arc<AtomicBool>, ui_t
 
 fn main() -> Result<(), std::io::Error>
 {
-    // Thread parameter example
-    //let thread_param = 100;
-    //let start_dns_proxy_handle = move |data: i32| {
-    //    let data = start_dns_proxy();
-    //};
-    //let dns_proxy_thread = thread::spawn(move || {
-    //    start_dns_proxy_handle(thread_param)
-    //});
     let (tx_proxy, rx_proxy) = mpsc::channel();
     let (tx_ui, rx_ui) = mpsc::channel();
     let dns_proxy_server = DnsProxy::new();
     let mut ui_server = UiServer::new();
     let mut filter_cfg: FilterConfig = FilterConfig::new();
 
-    #[cfg(feature = "filter_update")]
-    log_info!("Check for updates...\n");
-    #[cfg(feature = "filter_update")]
-    let _ = FilterConfig::check_update();
-    #[cfg(feature = "filter_update")]
-    log_debug!("Check finished\n");
-
     let cfg_result = filter_cfg.create_black_list_map();
     if cfg_result.is_err() {
-        return Err(cfg_result.err().unwrap());
+        log_error!("Create filter failed: {}\n", cfg_result.err().unwrap());
+        log_info!("Start with empty filter\n");
     }
     log_info!("Filter was created\n");
     let filter_prot = Arc::new(Mutex::new(filter_cfg));
