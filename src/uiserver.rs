@@ -99,6 +99,10 @@ impl UiServer {
                 drop(filter);
                 stat_str
             }
+            "{#VERSION}" => {
+                let ver_str: String = "1.0.0".to_string();
+                ver_str
+            }
             _=> Default::default(),
         };
 
