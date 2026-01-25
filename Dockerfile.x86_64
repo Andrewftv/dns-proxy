@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 RUN  apt-get update && apt-get -y install curl
 WORKDIR /usr/dns-adblock/
-COPY ./target/debug/dns-proxy /usr/dns-adblock/dns-proxy
+COPY ./target/release/dns-proxy /usr/dns-adblock/dns-proxy
 COPY ./local-blocklist.txt /usr/dns-adblock/local-blocklist.txt
 COPY ./html/404.html /usr/dns-adblock/html/404.html
 COPY ./html/change_ip.html /usr/dns-adblock/html/change_ip.html
