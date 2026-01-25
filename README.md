@@ -16,4 +16,5 @@ Port 8080 is used for the web management
 
 ## Run docker container(raspberri pi 32 bits)
 **docker run --rm -p 53:53/udp -p 8080:8080 dns-proxy:arm_v7** for single run
+
 **docker run -d --restart=unless-stopped -p 53:53/udp -p 8080:8080 dns-proxy:arm_v7** run as deamon
