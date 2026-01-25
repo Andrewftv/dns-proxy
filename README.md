@@ -1,6 +1,6 @@
 # AdCleaner
 
-The DNS server resolve names by dns.google (8.8.8.8) by DNS over HTTPS protocol
+The DNS server resolve names by dns.google (8.8.8.8) by DNS over HTTPS protocol.
 Block all advertisement providers from this [list](https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt)
 
 Port 8080 is used for the web management
