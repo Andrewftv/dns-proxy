@@ -76,15 +76,19 @@ fn get_remote_file_length(curl: &mut Easy) -> Result<u64, curl::Error> {
 #[derive(Clone)]
 struct Statistics {
     requests : u64,
+    enable : bool,
     #[allow(dead_code)]
     filter_type: FilterType,
 }
 
 impl Statistics {
     fn new(ftype: FilterType) -> Self {
-        Statistics { requests : 0, filter_type: ftype }
+        Statistics { requests: 0, enable: false, filter_type: ftype }
     }
 
+    pub fn set_enable(&mut self, enable: bool) {
+        self.enable = enable;
+    }
     pub fn inc_request_count(&mut self) -> u64 {
         self.requests += 1;
         return self.requests;
@@ -124,13 +128,28 @@ impl FilterConfig {
     }
 
     pub fn prepare_stat_data(&self) -> String {
-        let mut ret_str: String = Default::default();
+        let mut ret_str: String;
+        /* Table header */
+        ret_str = "<tr>\n<th>Enable</th>\n<th>Name</th>\n<th>Count</th></tr>\n".to_string();
+        /* Table contant */
         for (key, value) in self.ads_provider_list.iter() {
             if value.requests > 0 {
+                ret_str += "<tr>\n";
+                ret_str += "<td><input type=\"checkbox\" name=\"";
                 ret_str += key;
-                ret_str += ": ";
+                ret_str += "\" ";
+                if value.enable {
+                    ret_str += "checked";
+                } else {
+                    ret_str += "unchecked";
+                }
+                ret_str += "></td>\n";
+                ret_str += "<td>\n";
+                ret_str += key;
+                ret_str += "</td>\n<td>";
                 ret_str += &value.requests.to_string();
-                ret_str += "<br>";
+                ret_str += "</td>\n";
+                ret_str += "</tr>\n";
             }
         }
         return ret_str;
@@ -213,12 +232,33 @@ impl FilterConfig {
         return Ok(FilterUpdateStatus::Updated);
     }
 
+    pub fn set_enable(&mut self, key : &String) -> bool {
+        log_debug!("Key: '{}'\n", key);
+        let stat_opt = self.ads_provider_list.get_mut(key);
+        if stat_opt.is_none() {
+            return false;
+        }
+        let stat  = stat_opt.unwrap();
+        stat.set_enable(true);
+
+        return true;
+    }
+
+    pub fn clear_enable(&mut self) {
+        for (_key, value) in self.ads_provider_list.iter_mut() {
+            value.set_enable(false);
+        }
+    }
+
     pub fn search(&mut self, key : &String) -> (bool, u64) {
         let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
             return (false, 0);
         }
         let stat  = stat_opt.unwrap();
+        if stat.enable {
+            return (false, 0);
+        }
         let reject_count = stat.inc_request_count();
 
         return (true, reject_count);

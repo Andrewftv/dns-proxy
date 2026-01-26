@@ -2,11 +2,28 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>DNS Proxy</title>
+    <title>DNS AdCleaner</title>
+    <style>
+      table, th, td {
+        border: 1px solid black;
+        border-collapse: collapse;
+        padding: 5px;
+      }
+      table {
+        margin: left;
+      }
+    </style>
+    <link rel="stylesheet" href="classes.css" type="text/css">
   </head>
   <body>
     <h1>Reject statistics</h1>
     <p><a href="/">Home</a></p>
-    {#REJECT_STATISTICS}
+    <p><form action="enable_names" method="post">
+      <table stype="align=center">
+        {#REJECT_STATISTICS}
+      </table>
+      <br>
+      <button class="mysubmit" id="enable_names_id">Send</button>
+    </form></p>
   </body>
 </html>

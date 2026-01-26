@@ -100,7 +100,7 @@ impl UiServer {
                 stat_str
             }
             "{#VERSION}" => {
-                let ver_str: String = "1.0.0".to_string();
+                let ver_str: String = "1.0".to_string();
                 ver_str
             }
             _=> Default::default(),
@@ -290,6 +290,27 @@ impl UiServer {
         return true;
     }
 
+    fn set_all_disable(mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
+        let mut filter = mfilter.lock().unwrap();
+        filter.clear_enable();
+        drop(filter);
+
+        return true;
+    }
+
+    fn set_names_enable(params: &Vec<PostParams>, mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
+        let mut filter = mfilter.lock().unwrap();
+        filter.clear_enable();
+        for param in params.iter() {
+            log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
+
+            filter.set_enable(&param.name);
+        }
+        drop(filter);
+
+        return true;
+    }
+
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
         // DNS server already srarted. Check blocklist.txt for update
         let res = FilterConfig::check_update();
@@ -401,6 +422,25 @@ impl UiServer {
                 "GET /classes.css HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
                     self.prepare_content(Some("html/classes.css"), false, mfilter)
+                }
+                "POST /enable_names HTTP/1.1" => {
+                    let mut data = Vec::with_capacity(1024 * 10);
+                    data.resize(1024 * 10, 0); 
+                    let res = UiServer::get_post_data(&request, &mut data);
+                    if res.is_ok() {
+                        data.truncate(res.unwrap());
+                        log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
+                        let opt = UiServer::parse_post_params(&data);
+                        if opt.is_some() {
+                            UiServer::set_names_enable(&opt.unwrap(), mfilter);
+                        } else {
+                            UiServer::set_all_disable(mfilter);
+                        }
+                    }
+                    self.set_status_code("HTTP/1.1 301 Redirect");
+                    self.set_response_hdr("Cache-Control: no-cache");
+                    self.set_response_hdr("Location: /statistics.html");
+                    self.prepare_content(None, false, mfilter)
                 }
                 _ => {
                     self.set_status_code("HTTP/1.1 404 NOT FOUND");
