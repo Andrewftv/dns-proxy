@@ -429,7 +429,6 @@ impl UiServer {
                     let res = UiServer::get_post_data(&request, &mut data);
                     if res.is_ok() {
                         data.truncate(res.unwrap());
-                        log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
                         let opt = UiServer::parse_post_params(&data);
                         if opt.is_some() {
                             UiServer::set_names_enable(&opt.unwrap(), mfilter);
