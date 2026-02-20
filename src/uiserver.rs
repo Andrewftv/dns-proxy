@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Local};
 
 use crate::{log_error, log_debug, log_info};
@@ -28,7 +28,8 @@ impl PostParams {
 pub struct UiServer {
     pub running: Arc<AtomicBool>,
     status_code: String,
-    response_hdrs: Vec<String>
+    response_hdrs: Vec<String>,
+    start_time: SystemTime
 }
 
 impl UiServer {
@@ -37,11 +38,23 @@ impl UiServer {
         {
             running: Arc::new(AtomicBool::new(true)),
             status_code: Default::default(),
-            response_hdrs: vec![]
+            response_hdrs: vec![],
+            start_time: SystemTime::now()
         }
     }
 
-    fn get_data_by_tag(tag: &str, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
+    fn get_uptime_sec(&self) -> u64 {
+        let now = SystemTime::now();
+        let res = now.duration_since(self.start_time);
+        if res.is_err() {
+            return 0;
+        }
+        let duration = res.unwrap();
+
+        return duration.as_secs();
+    }
+
+    fn get_data_by_tag(&self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
         let ret_string: String = match tag {
             "{#ENTRIES}" => {
                 let filter = mfilter.lock().unwrap();
@@ -103,19 +116,29 @@ impl UiServer {
                 let ver_str: String = "1.0".to_string();
                 ver_str
             }
+            "{#UPTIME}" => {
+                let total_secs = self.get_uptime_sec();
+                let seconds = total_secs % 60;
+                let minutes = (total_secs % 3600) / 60;
+                let hours = total_secs / 3600;
+                let days = total_secs / 86400;
+                let uptime_str = format!("{} days {:02}:{:02}:{:02}", days, hours, minutes, seconds);
+
+                uptime_str
+            }
             _=> Default::default(),
         };
 
         return ret_string;
     }
 
-    fn replace_tag(tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
+    fn replace_tag(&self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
         let mut new_contents: String;
         let opt = contents.find(tag);
         if opt.is_some() {
             let offset = opt.unwrap();
             new_contents = contents[0..offset].to_string();
-            new_contents += &UiServer::get_data_by_tag(tag, mfilter);
+            new_contents += &self.get_data_by_tag(tag, mfilter);
             new_contents += &contents[offset + tag.len()..contents.len()].to_string();
         } else {
             new_contents = contents.to_string();
@@ -159,7 +182,7 @@ impl UiServer {
                         break;
                     }
                     let tag = tag_opt.unwrap();
-                    contents_temp = UiServer::replace_tag(&tag, &contents_temp, mfilter);
+                    contents_temp = self.replace_tag(&tag, &contents_temp, mfilter);
                 }
             }
             contents = contents_temp;
