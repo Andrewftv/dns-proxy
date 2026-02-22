@@ -188,7 +188,6 @@ impl FilterConfig {
         }
         let remote_size = res.unwrap();
         log_info!("Remote file length: {}\n", remote_size);
-        //drop(curl);
 
         let res = get_local_file_length();
         if res.is_ok() {
@@ -210,7 +209,6 @@ impl FilterConfig {
         }
 
         curl.write_function(move |data| {
-            //log_debug!("File size: {}\n", data.len());
             file.as_mut().unwrap().write_all(data).unwrap();
 
             Ok(data.len())

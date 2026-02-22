@@ -142,7 +142,6 @@ impl DnsProxy {
 
             dns_response = reject_buff.to_vec();
             if reject_count == 1 {
-                //log_print!("   \x1b[31m[rejected]\x1b[0m\n");
                 log_string += "   \x1b[31m[rejected]\x1b[0m\n";
             }
         } else {
@@ -158,14 +157,12 @@ impl DnsProxy {
             }
             dns_response = lookup_result.unwrap();
             if !is_found {
-                //log_print!("   \x1b[32m[allowed]\x1b[0m\n");
                 log_string += "   \x1b[32m[allowed]\x1b[0m\n";
             }
         }
         if !is_found || reject_count == 1 {
             log_info!(&log_string);
         }
-        //log_debug!("Sending {} bytes\n", dns_response.len());
         let send_result = socket.send_to(&dns_response, ip_addr);
         if send_result.is_err() {
             return Err(send_result.err().unwrap());
