@@ -5,15 +5,10 @@ use std::net::{Ipv4Addr, IpAddr};
 use std::str;
 use crate::log_info;
 use crate::log_debug;
-#[cfg(feature = "filter_update")]
 use crate::log_error;
-#[cfg(feature = "filter_update")]
 use curl::easy::Easy;
-#[cfg(feature = "filter_update")]
 use std::io::Write;
-#[cfg(feature = "filter_update")]
 use std::fs::File;
-#[cfg(feature = "filter_update")]
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, PartialEq)]
@@ -22,7 +17,6 @@ pub enum FilterType {
     Local
 }
 
-#[cfg(feature = "filter_update")]
 fn get_local_file_length() -> Result<u64, std::io::Error> {
     let res = File::open("blocklist.txt");
     if res.is_err() {
@@ -35,7 +29,6 @@ fn get_local_file_length() -> Result<u64, std::io::Error> {
     Ok(metadata.len())
 }
 
-#[cfg(feature = "filter_update")]
 fn get_remote_file_length(curl: &mut Easy) -> Result<u64, curl::Error> {
     let rlen: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
 
@@ -180,7 +173,6 @@ impl FilterConfig {
         return self.ads_provider_list.len();
     }
 
-    #[cfg(feature = "filter_update")]
     pub fn check_update() -> Result<FilterUpdateStatus, curl::Error> {
         // Get remote file length
         let mut curl = Easy::new();

@@ -11,9 +11,6 @@ opt-level = 3
 
 [dependencies]
 chrono = "0.4.38"
-curl = { version = "0.4.49", features = ["static-curl", "static-ssl"], optional = true }
+curl = { version = "0.4.49", features = ["static-curl", "static-ssl"], optional = false }
 ctrlc = "3.4.5"
 
-[features]
-default = ["filter_update"]
-filter_update = ["dep:curl"]
