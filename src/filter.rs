@@ -102,7 +102,8 @@ pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
     bind_addr: std::net::SocketAddr,
     dns_srv_addr: std::net::SocketAddr,
-    use_doh: bool
+    use_doh: bool,
+    update_status: FilterUpdateStatus
 }
 
 impl FilterConfig {
@@ -116,8 +117,17 @@ impl FilterConfig {
             /* Default google DNS */
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
-            use_doh: true
+            use_doh: true,
+            update_status: FilterUpdateStatus::Unchanged
         }
+    }
+
+    pub fn set_update_status(&mut self, status: FilterUpdateStatus) {
+        self.update_status = status;
+    }
+
+    pub fn is_updated(&self) -> bool {
+        return self.update_status == FilterUpdateStatus::Updated;
     }
 
     pub fn prepare_stat_data(&self) -> String {

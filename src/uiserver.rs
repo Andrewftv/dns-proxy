@@ -126,6 +126,17 @@ impl UiServer {
 
                 uptime_str
             }
+            "{#FILTER_STATUS}" => {
+                let mut filter = mfilter.lock().unwrap();
+                let mut status_str = "Up to date";
+                if filter.is_updated() {
+                    status_str = "Updated";
+                }
+                filter.set_update_status(FilterUpdateStatus::Unchanged);
+                drop(filter);
+
+                status_str.to_string()
+            }
             _=> Default::default(),
         };
 
@@ -421,6 +432,10 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 200 OK");
                     self.prepare_content(Some("html/statistics.html"), true, mfilter)
                 }
+                "GET /update_filter_result.html HTTP/1.1" => {
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/update_filter_result.html"), true, mfilter)
+                }
                 "POST /reload_filter HTTP/1.1" => {
                     let mut filter = mfilter.lock().unwrap();
                     let _ = filter.reload_filter();
@@ -435,11 +450,12 @@ impl UiServer {
                     if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
                         let mut filter = mfilter.lock().unwrap();
                         let _ = filter.reload_filter();
+                        filter.set_update_status(FilterUpdateStatus::Updated);
                         drop(filter);
                     }
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
-                    self.set_response_hdr("Location: /");
+                    self.set_response_hdr("Location: /update_filter_result.html");
                     self.prepare_content(None, false, mfilter)
                 }
                 "GET /classes.css HTTP/1.1" => {
