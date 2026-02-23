@@ -1,7 +1,6 @@
 use std::io;
 use std::io::{BufRead, Error, ErrorKind};
 use std::collections::BTreeMap;
-use std::net::{Ipv4Addr, IpAddr};
 use std::str;
 use crate::log_info;
 use crate::log_debug;
@@ -100,9 +99,6 @@ pub enum FilterUpdateStatus {
 
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
-    bind_addr: std::net::SocketAddr,
-    dns_srv_addr: std::net::SocketAddr,
-    use_doh: bool,
     update_status: FilterUpdateStatus
 }
 
@@ -112,12 +108,6 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
-            //bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2053),
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
-            /* Default google DNS */
-            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
-            /* Use DNS over HTTPS */
-            use_doh: true,
             update_status: FilterUpdateStatus::Unchanged
         }
     }
@@ -156,27 +146,6 @@ impl FilterConfig {
             }
         }
         return ret_str;
-    }
-
-    pub fn get_use_doh(&self) -> bool {
-        return self.use_doh;
-    }
-
-    pub fn set_use_doh(&mut self, value: bool) {
-        self.use_doh = value;
-    }
-
-    pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
-        return self.dns_srv_addr;
-    }
-
-    pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) -> bool {
-        self.dns_srv_addr = addr;
-        return true;
-    }
-
-    pub fn get_bind_addr(&self) -> std::net::SocketAddr {
-        return self.bind_addr;
     }
 
     pub fn get_num_entries(&self) -> usize {
