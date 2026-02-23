@@ -3,3 +3,5 @@ blocklist.txt
 dnsdoc.txt
 docker-help.txt
 /.vscode
+token.txt
+*.tar

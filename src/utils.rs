@@ -38,7 +38,7 @@ pub fn log_print(severity : LogSeverity, msg : &str) {
             _ => sev_str = "",
         }
         let now : DateTime<Local> = Local::now();
-        print!("{}: {}{}", now.format("%Y/%m/%d %T:%.3f"), sev_str, msg);
+        print!("{}: {}{}", now.format("%Y/%m/%d %T:%3f"), sev_str, msg);
     } else {
         print!("{}", msg);
     }
