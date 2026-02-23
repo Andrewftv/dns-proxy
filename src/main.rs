@@ -42,6 +42,9 @@ impl DnsProxy {
         Result<Vec<u8>, std::io::Error> {
         let mut curl = shared_curl.lock().unwrap();
         let url = format!("https://{}/dns-query", dns_server.ip().to_string());
+
+        log_debug!("URL: {}\n", url);
+
         let mut res = curl.url(&url);
         if res.is_err() {
             return Err(res.err().unwrap().into());
@@ -279,7 +282,8 @@ fn main() -> Result<(), std::io::Error>
     let dns_proxy_server = DnsProxy::new();
     let mut ui_server = UiServer::new();
     let mut filter: FilterConfig = FilterConfig::new();
-    let srv_config: LocalConfig = LocalConfig::new();
+    let mut srv_config: LocalConfig = LocalConfig::new();
+    srv_config.read_config();
 
     let cfg_result = filter.create_black_list_map();
     if cfg_result.is_err() {

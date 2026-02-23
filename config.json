@@ -1,0 +1,6 @@
+{
+    "listen_addres": "0.0.0.0",
+    "listen_port": "2053",
+    "DNS_server": "1.1.1.1",
+    "use_DoH": "yes"
+}

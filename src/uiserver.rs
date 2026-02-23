@@ -108,7 +108,7 @@ impl UiServer {
                 stat_str
             }
             "{#VERSION}" => {
-                let ver_str: String = "1.0".to_string();
+                let ver_str: String = "1.1".to_string();
                 ver_str
             }
             "{#UPTIME}" => {
@@ -317,6 +317,10 @@ impl UiServer {
                 }
             };
         }
+
+        let cfg = mcfg.lock().unwrap();
+        cfg.write_config();
+        drop(cfg);
 
         return true;
     }

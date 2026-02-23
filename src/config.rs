@@ -1,6 +1,8 @@
+use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
+use std::str::FromStr;
+use crate::{log_error, log_debug, log_info};
 
-#[derive(Clone, Copy)]
 pub struct LocalConfig {
     bind_addr: std::net::SocketAddr,
     dns_srv_addr: std::net::SocketAddr,
@@ -9,15 +11,150 @@ pub struct LocalConfig {
 
 impl LocalConfig {
     pub fn new() -> LocalConfig {
+        /* Default config */
         LocalConfig
         {
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 2053),
-            //bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
             /* Default google DNS */
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
             use_doh: true,
         }
+    }
+
+    pub fn write_config(&self) -> bool {
+
+        let mut data: String = "{\n".to_string();
+        data += "    \"listen_addres\": ";
+        data += "\"";
+        data += &self.bind_addr.ip().to_string();
+        data += "\",\n";
+
+        data += "    \"listen_port\": ";
+        data += "\"";
+        data += &self.bind_addr.port().to_string();
+        data += "\",\n";
+
+        data += "    \"DNS_server\": ";
+        data += "\"";
+        data += &self.dns_srv_addr.ip().to_string();
+        data += "\",\n";
+
+        data += "    \"use_DoH\": ";
+        data += "\"";
+        data += if self.use_doh == true {"yes"} else {"no"};
+        data += "\"\n"; 
+
+        data += "}";
+
+        log_debug!("{}\n", data);
+
+        let res = fs::write("config.json", data);
+        if res.is_err() {
+            log_error!("Error write configuration file\n");
+            return false;
+        }
+
+        return true;
+    }
+
+    pub fn read_config(&mut self) -> bool {
+        log_debug!("Reading configuration\n");
+        let res = fs::read_to_string("config.json");
+        if res.is_err() {
+            log_error!("Unable to open configuration file\n");
+            return false;
+        }
+        let cfg_file = res.unwrap();
+
+        let mut opt = cfg_file.find('{');
+        if opt.is_none() {
+            log_error!("Invalid json file. There is no \"{\"\n");
+            return false;
+        }
+        let mut name: &str;
+        let mut value: &str;
+        let mut curr_pos = opt.unwrap() + 1;
+
+        while let Some(pos) = cfg_file[curr_pos..].find('"') {
+            let begin = pos + curr_pos + 1;
+            opt = cfg_file[begin..].find('"');
+            if opt.is_none() {
+                log_error!("Invalid json file\n");
+                return false;
+            }
+            let end = opt.unwrap() + begin;
+            name = &cfg_file[begin..end];
+
+            curr_pos = end + 1;
+
+            if cfg_file[curr_pos..].find(':').is_none() {
+                log_error!("Delimeter is not found\n");
+                return false;
+            }
+            opt = cfg_file[curr_pos..].find('"');
+            if opt.is_none() {
+                log_error!("Invalid json file\n");
+                return false;
+            }
+            let begin = opt.unwrap() + curr_pos + 1;
+            opt = cfg_file[begin..].find('"');
+            if opt.is_none() {
+                log_error!("Invalid json file\n");
+                return false;
+            }
+            let end = opt.unwrap() + begin;
+            value = &cfg_file[begin..end];
+
+            log_info!("name: {} value: {}\n", name, value);
+
+            curr_pos = end + 1;
+
+            match name {
+                "listen_addres" => {
+                    let res = Ipv4Addr::from_str(value);
+                    if res.is_err() {
+                        log_error!("Invalid IP address: {}\n", value);
+                        continue;
+                    }
+                    let ip = res.unwrap();
+                    self.bind_addr.set_ip(IpAddr::V4(ip));
+                },
+                "listen_port" => {
+                    let res = value.parse::<u16>();
+                    if res.is_err() {
+                        log_error!("Invalid port: {}\n", value);
+                        continue;
+                    }
+                    let port = res.unwrap();
+                    self.bind_addr.set_port(port);
+                },
+                "DNS_server" => {
+                    let res = Ipv4Addr::from_str(value);
+                    if res.is_err() {
+                        log_error!("Invalid IP address: {}\n", value);
+                        continue;
+                    }
+                    let ip = res.unwrap();
+                    self.dns_srv_addr.set_ip(IpAddr::V4(ip));
+                    self.dns_srv_addr.set_port(53);
+                },
+                "use_DoH" => {
+                    if value == "yes" {
+                        self.use_doh = true;
+                    } else if value == "no" {
+                        self.use_doh = false;
+                    } else {
+                        log_error!("Invalid value\n");
+                    }
+                },
+                _ => {
+                    log_error!("Unknown config: {}\n", name);
+                }
+            }
+        }
+        log_debug!("Reading configuration done\n");
+        return true;
     }
 
     pub fn get_bind_addr(&self) -> std::net::SocketAddr {
