@@ -5,7 +5,7 @@ DNS resolution is handled by dns.google (8.8.8.8) via DNS over HTTPS. Block all 
 Port 8080 is used for the web management
 
 ## Version build instructions.
-The build process is performed on a Linux machine (Windows is untested). Alternatively, you can build directly on the target Raspberry Pi server. This eliminates the need for Docker and a cross-platform GCC toolchain. A corresponding GCC toolchain is required to build a cross-platform version. When building the ARM_v7 image, I used arm-unknown-linux-musleabi to minimize the Docker image size and reduce the number of dependencies. I used [crosstool-ng](https://crosstool-ng.github.io/) to build it. You can use the standard armv8-rpi4-linux-gnueabihf toolchain for Raspberry Pi, but the resulting image size will exceed 100MB.
+The build process is performed on a Linux machine (Windows is untested). Alternatively, you can build directly on the target Raspberry Pi server. This eliminates the need for Docker and a cross-platform GCC toolchain. A corresponding GCC toolchain is required to build a cross-platform version. When building the ARM_v7 image, I used <ins>arm-unknown-linux-musleabi</ins> to minimize the Docker image size and reduce the number of dependencies. I used [crosstool-ng](https://crosstool-ng.github.io/) to build it. You can use the standard <ins>armv8-rpi4-linux-gnueabihf</ins> toolchain for Raspberry Pi, but the resulting image size will exceed 100MB.
 
 ### Build on target Linux machine:
 ```
