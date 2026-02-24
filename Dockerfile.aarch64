@@ -10,6 +10,7 @@ COPY ./html/change_ip.html /usr/dns-adblock/html/change_ip.html
 COPY ./html/classes.css /usr/dns-adblock/html/classes.css
 COPY ./html/start_page.html /usr/dns-adblock/html/start_page.html
 COPY ./html/statistics.html /usr/dns-adblock/html/statistics.html
+COPY ./html/update_filter_result.html /usr/dns-adblock/html/update_filter_result.html
 
 CMD ["/usr/dns-adblock/dns-proxy"]
 
