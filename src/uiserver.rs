@@ -120,7 +120,7 @@ impl UiServer {
                 let total_secs = self.get_uptime_sec();
                 let seconds = total_secs % 60;
                 let minutes = (total_secs % 3600) / 60;
-                let hours = total_secs / 3600;
+                let hours = (total_secs % 86400) / 3600;
                 let days = total_secs / 86400;
                 let uptime_str = format!("{} days {:02}:{:02}:{:02}", days, hours, minutes, seconds);
 
