@@ -1,6 +1,6 @@
 {
-    "listen_addres": "0.0.0.0",
-    "listen_port": "2053",
-    "DNS_server": "1.1.1.1",
+    "listen_address": "0.0.0.0",
+    "listen_port": "53",
+    "DNS_server": "8.8.8.8",
     "use_DoH": "yes"
 }

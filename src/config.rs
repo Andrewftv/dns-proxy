@@ -10,6 +10,13 @@ pub struct LocalConfig {
 }
 
 impl LocalConfig {
+    const LISTEN_ADDR_NAME: &str = "listen_address";
+    const LISTEN_PORT_NAME: &str = "listen_port";
+    const DNS_SERVER_NAME: &str = "DNS_server";
+    const USE_DOH_NAME: &str = "use_DoH";
+    const YES_VALUE: &str = "yes";
+    const NO_VALUE: &str = "no";
+
     pub fn new() -> LocalConfig {
         /* Default config */
         LocalConfig
@@ -25,7 +32,7 @@ impl LocalConfig {
     pub fn write_config(&self) -> bool {
 
         let mut data: String = "{\n".to_string();
-        data += "    \"listen_addres\": ";
+        data += "    \"listen_address\": ";
         data += "\"";
         data += &self.bind_addr.ip().to_string();
         data += "\",\n";
@@ -42,7 +49,7 @@ impl LocalConfig {
 
         data += "    \"use_DoH\": ";
         data += "\"";
-        data += if self.use_doh == true {"yes"} else {"no"};
+        data += if self.use_doh == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
         data += "\"\n"; 
 
         data += "}";
@@ -58,6 +65,52 @@ impl LocalConfig {
         return true;
     }
 
+    fn set_config_values(&mut self, name: &str, value: &str) -> bool {
+        match name {
+            LocalConfig::LISTEN_ADDR_NAME => {
+                let res = Ipv4Addr::from_str(value);
+                if res.is_err() {
+                    log_error!("Invalid IP address: {}\n", value);
+                    return false;
+                }
+                let ip = res.unwrap();
+                self.bind_addr.set_ip(IpAddr::V4(ip));
+            },
+            LocalConfig::LISTEN_PORT_NAME => {
+                let res = value.parse::<u16>();
+                if res.is_err() {
+                    log_error!("Invalid port: {}\n", value);
+                    return false;
+                }
+                let port = res.unwrap();
+                self.bind_addr.set_port(port);
+            },
+            LocalConfig::DNS_SERVER_NAME => {
+                let res = Ipv4Addr::from_str(value);
+                if res.is_err() {
+                    log_error!("Invalid DNS server IP address: {}\n", value);
+                    return false;
+                }
+                let ip = res.unwrap();
+                self.dns_srv_addr.set_ip(IpAddr::V4(ip));
+                self.dns_srv_addr.set_port(53);
+            },
+            LocalConfig::USE_DOH_NAME => {
+                if value == LocalConfig::YES_VALUE {
+                    self.use_doh = true;
+                } else if value == LocalConfig::NO_VALUE {
+                    self.use_doh = false;
+                } else {
+                    log_error!("Invalid value\n");
+                }
+            },
+            _ => {
+                log_error!("Unknown config: {}\n", name);
+            }
+        }
+        return true;
+    }
+
     pub fn read_config(&mut self) -> bool {
         log_debug!("Reading configuration\n");
         let res = fs::read_to_string("config.json");
@@ -66,7 +119,6 @@ impl LocalConfig {
             return false;
         }
         let cfg_file = res.unwrap();
-
         let mut opt = cfg_file.find('{');
         if opt.is_none() {
             log_error!("Invalid json file. There is no \"{\"\n");
@@ -110,48 +162,7 @@ impl LocalConfig {
 
             curr_pos = end + 1;
 
-            match name {
-                "listen_addres" => {
-                    let res = Ipv4Addr::from_str(value);
-                    if res.is_err() {
-                        log_error!("Invalid IP address: {}\n", value);
-                        continue;
-                    }
-                    let ip = res.unwrap();
-                    self.bind_addr.set_ip(IpAddr::V4(ip));
-                },
-                "listen_port" => {
-                    let res = value.parse::<u16>();
-                    if res.is_err() {
-                        log_error!("Invalid port: {}\n", value);
-                        continue;
-                    }
-                    let port = res.unwrap();
-                    self.bind_addr.set_port(port);
-                },
-                "DNS_server" => {
-                    let res = Ipv4Addr::from_str(value);
-                    if res.is_err() {
-                        log_error!("Invalid IP address: {}\n", value);
-                        continue;
-                    }
-                    let ip = res.unwrap();
-                    self.dns_srv_addr.set_ip(IpAddr::V4(ip));
-                    self.dns_srv_addr.set_port(53);
-                },
-                "use_DoH" => {
-                    if value == "yes" {
-                        self.use_doh = true;
-                    } else if value == "no" {
-                        self.use_doh = false;
-                    } else {
-                        log_error!("Invalid value\n");
-                    }
-                },
-                _ => {
-                    log_error!("Unknown config: {}\n", name);
-                }
-            }
+            self.set_config_values(name, value);
         }
         log_debug!("Reading configuration done\n");
         return true;
@@ -173,8 +184,7 @@ impl LocalConfig {
         return self.dns_srv_addr;
     }
 
-    pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) -> bool {
+    pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) {
         self.dns_srv_addr = addr;
-        return true;
     }
 }
