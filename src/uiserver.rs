@@ -168,7 +168,8 @@ impl UiServer {
         return None;
     }
 
-    fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>, mcfg: &Arc<Mutex<LocalConfig>>) -> String {
+    fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>,
+        mcfg: &Arc<Mutex<LocalConfig>>) -> String {
             
         let mut response: String = Default::default();
         let mut contents: String = Default::default();
