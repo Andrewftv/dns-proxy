@@ -43,7 +43,7 @@ impl DnsProxy {
         let mut curl = shared_curl.lock().unwrap();
         let url = format!("https://{}/dns-query", dns_server.ip().to_string());
 
-        log_debug!("URL: {}\n", url);
+        //log_debug!("URL: {}\n", url);
 
         let mut res = curl.url(&url);
         if res.is_err() {
@@ -243,6 +243,11 @@ impl DnsProxy {
                     log_warn!("Handling error: {}\n", query_result.err().unwrap());
                 }
             });
+            //tpool.log_status();
+            let stat = tpool.get_stat();
+            let mut cfg = cfg_prot.lock().unwrap();
+            cfg.set_tpool_stat(&stat);
+            drop(cfg);
         }
     }
 }

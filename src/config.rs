@@ -2,11 +2,15 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use crate::{log_error, log_debug, log_info};
+use crate::tpool::TPoolStat;
 
 pub struct LocalConfig {
+    /* Config part */
     bind_addr: std::net::SocketAddr,
     dns_srv_addr: std::net::SocketAddr,
     use_doh: bool,
+    /* Statistics part */
+    tpool_stat: TPoolStat
 }
 
 impl LocalConfig {
@@ -19,6 +23,8 @@ impl LocalConfig {
 
     pub fn new() -> LocalConfig {
         /* Default config */
+        let tpool_stat =  TPoolStat::new(4);
+
         LocalConfig
         {
             bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
@@ -26,7 +32,24 @@ impl LocalConfig {
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
             use_doh: true,
+            tpool_stat
         }
+    }
+
+    pub fn set_tpool_stat(&mut self, stat: &TPoolStat) {
+        self.tpool_stat = stat.clone();
+    }
+
+    pub fn get_tpool_workers(&self) -> usize {
+        return self.tpool_stat.get_workers();
+    }
+
+    pub fn is_busy(&self, id:usize) -> bool {
+        return self.tpool_stat.get_busy(id);
+    }
+
+    pub fn get_jobs(&self, id: usize) -> u64 {
+        return self.tpool_stat.get_jobs(id);
     }
 
     pub fn write_config(&self) -> bool {
