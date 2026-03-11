@@ -5,6 +5,7 @@ WORKDIR /usr/dns-adblock/
 
 COPY ./target/aarch64-unknown-linux-gnu/release/dns-proxy /usr/dns-adblock/dns-proxy
 COPY ./local-blocklist.txt /usr/dns-adblock/local-blocklist.txt
+COPY ./config.json /usr/dns-adblock/config.json
 COPY ./html/404.html /usr/dns-adblock/html/404.html
 COPY ./html/change_ip.html /usr/dns-adblock/html/change_ip.html
 COPY ./html/classes.css /usr/dns-adblock/html/classes.css
