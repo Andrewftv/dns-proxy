@@ -121,37 +121,24 @@ impl UiServer {
 
                 uptime_str
             }
-            "{#WORKERS}" => {
+            "{#TPOOL_STAT_TABLE}" => {
+                let mut stat_table: String = Default::default();
                 let workers = srv_cfg.get_tpool_workers();
-                workers.to_string()
-            }
-            "{#BUSY0}" => {
-                let busy = srv_cfg.is_busy(0);
-                busy.to_string()
-            }
-            "{#BUSY1}" => {
-                let busy = srv_cfg.is_busy(1);
-                busy.to_string()
-            }
-            "{#BUSY2}" => {
-                let busy = srv_cfg.is_busy(2);
-                busy.to_string()
-            }
-            "{#BUSY3}" => {
-                let busy = srv_cfg.is_busy(3);
-                busy.to_string()
-            }
-            "{#JOBS0}" => {
-                srv_cfg.get_jobs(0).to_string()
-            }
-            "{#JOBS1}" => {
-                srv_cfg.get_jobs(1).to_string()
-            }
-            "{#JOBS2}" => {
-                srv_cfg.get_jobs(2).to_string()
-            }
-            "{#JOBS3}" => {
-                srv_cfg.get_jobs(3).to_string()
+                for id in 0..workers {
+                    stat_table += "<tr>\n";
+                    stat_table += "<td>";
+                    stat_table += &id.to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "<td>";
+                    stat_table += &srv_cfg.is_busy(id).to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "<td>";
+                    stat_table += &srv_cfg.get_jobs(id).to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "</tr>\n";
+                }
+
+                stat_table
             }
             "{#FILTER_STATUS}" => {
                 let mut filter = mfilter.lock().unwrap();
