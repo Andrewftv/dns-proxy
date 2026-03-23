@@ -34,6 +34,17 @@ pub struct UiServer {
 }
 
 impl UiServer {
+    const TAG_FILTER_ENTRIES: &str = "{#ENTRIES}";
+    const TAG_LISTEN_ADDRESS: &str = "{#LISTEN}";
+    const TAG_DNS_ADDR_PORT: &str = "{#DNSSRV}";
+    const TAG_LAST_FILTER_UPDATE: &str = "{#UPDATE_DATE}";
+    const TAG_DNS_TYPE: &str = "{#USE_DOH}";
+    const TAG_REJECTED_NAMES: &str = "{#REJECT_STATISTICS}";
+    const TAG_VERSION: &str = "{#VERSION}";
+    const TAG_UPTIME: &str = "{#UPTIME}";
+    const TAG_TPOOL_STAT: &str = "{#TPOOL_STAT_TABLE}";
+    const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
+
     pub fn new() -> UiServer {
         UiServer
         {
@@ -57,17 +68,17 @@ impl UiServer {
 
     fn get_data_by_tag(&self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
         let ret_string: String = match tag {
-            "{#ENTRIES}" => {
+            UiServer::TAG_FILTER_ENTRIES => {
                 let filter = mfilter.lock().unwrap();
                 let entries = filter.get_num_entries();
                 drop(filter);
                 entries.to_string()
             }
-            "{#LISTEN}" => {
+            UiServer::TAG_LISTEN_ADDRESS => {
                 let listen_addr = srv_cfg.get_bind_addr();
                 listen_addr.to_string()
             }
-            "{#DNSSRV}" => {
+            UiServer::TAG_DNS_ADDR_PORT => {
                 let use_doh = srv_cfg.get_use_doh();
                 let dns_srv_addr = srv_cfg.get_dns_srv_addr();
                 
@@ -78,7 +89,7 @@ impl UiServer {
                 };
                 addr_port_str
             }
-            "{#UPDATE_DATE}" => {
+            UiServer::TAG_LAST_FILTER_UPDATE => {
                 let mut update_str: String = Default::default();
                 let res = std::fs::metadata("blocklist.txt");
                 if res.is_ok() {
@@ -92,7 +103,7 @@ impl UiServer {
                 }
                 update_str
             }
-            "{#USE_DOH}" => {
+            UiServer::TAG_DNS_TYPE => {
                 let use_doh = srv_cfg.get_use_doh();
                 let use_doh_str = if use_doh {
                     "checked".to_string()
@@ -101,17 +112,17 @@ impl UiServer {
                 };
                 use_doh_str
             }
-            "{#REJECT_STATISTICS}" => {
+            UiServer::TAG_REJECTED_NAMES => {
                 let filter = mfilter.lock().unwrap();
                 let stat_str = filter.prepare_stat_data();
                 drop(filter);
                 stat_str
             }
-            "{#VERSION}" => {
+            UiServer::TAG_VERSION => {
                 let ver_str: String = "1.1".to_string();
                 ver_str
             }
-            "{#UPTIME}" => {
+            UiServer::TAG_UPTIME => {
                 let total_secs = self.get_uptime_sec();
                 let seconds = total_secs % 60;
                 let minutes = (total_secs % 3600) / 60;
@@ -121,7 +132,7 @@ impl UiServer {
 
                 uptime_str
             }
-            "{#TPOOL_STAT_TABLE}" => {
+            UiServer::TAG_TPOOL_STAT => {
                 let mut stat_table: String = Default::default();
                 let workers = srv_cfg.get_tpool_workers();
                 for id in 0..workers {
@@ -140,7 +151,7 @@ impl UiServer {
 
                 stat_table
             }
-            "{#FILTER_STATUS}" => {
+            UiServer::TAG_FILTER_STATUS => {
                 let mut filter = mfilter.lock().unwrap();
                 let mut status_str = "Up to date";
                 if filter.is_updated() {
