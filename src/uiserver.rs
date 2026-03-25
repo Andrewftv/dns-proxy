@@ -9,6 +9,7 @@ use chrono::{DateTime, Local};
 
 use crate::{log_error, log_debug, log_info};
 use crate::filter::{FilterConfig, FilterUpdateStatus};
+use crate::config::LocalConfig;
 
 struct PostParams {
     name: String,
@@ -33,6 +34,17 @@ pub struct UiServer {
 }
 
 impl UiServer {
+    const TAG_FILTER_ENTRIES: &str = "{#ENTRIES}";
+    const TAG_LISTEN_ADDRESS: &str = "{#LISTEN}";
+    const TAG_DNS_ADDR_PORT: &str = "{#DNSSRV}";
+    const TAG_LAST_FILTER_UPDATE: &str = "{#UPDATE_DATE}";
+    const TAG_DNS_TYPE: &str = "{#USE_DOH}";
+    const TAG_REJECTED_NAMES: &str = "{#REJECT_STATISTICS}";
+    const TAG_VERSION: &str = "{#VERSION}";
+    const TAG_UPTIME: &str = "{#UPTIME}";
+    const TAG_TPOOL_STAT: &str = "{#TPOOL_STAT_TABLE}";
+    const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
+
     pub fn new() -> UiServer {
         UiServer
         {
@@ -54,25 +66,21 @@ impl UiServer {
         return duration.as_secs();
     }
 
-    fn get_data_by_tag(&self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
+    fn get_data_by_tag(&self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
         let ret_string: String = match tag {
-            "{#ENTRIES}" => {
+            UiServer::TAG_FILTER_ENTRIES => {
                 let filter = mfilter.lock().unwrap();
                 let entries = filter.get_num_entries();
                 drop(filter);
                 entries.to_string()
             }
-            "{#LISTEN}" => {
-                let filter = mfilter.lock().unwrap();
-                let listen_addr = filter.get_bind_addr();
-                drop(filter);
+            UiServer::TAG_LISTEN_ADDRESS => {
+                let listen_addr = srv_cfg.get_bind_addr();
                 listen_addr.to_string()
             }
-            "{#DNSSRV}" => {
-                let filter = mfilter.lock().unwrap();
-                let use_doh = filter.get_use_doh();
-                let dns_srv_addr = filter.get_dns_srv_addr();
-                drop(filter);
+            UiServer::TAG_DNS_ADDR_PORT => {
+                let use_doh = srv_cfg.get_use_doh();
+                let dns_srv_addr = srv_cfg.get_dns_srv_addr();
                 
                 let addr_port_str = if use_doh {
                     dns_srv_addr.ip().to_string() + ":DNS over HTTPS"
@@ -81,7 +89,7 @@ impl UiServer {
                 };
                 addr_port_str
             }
-            "{#UPDATE_DATE}" => {
+            UiServer::TAG_LAST_FILTER_UPDATE => {
                 let mut update_str: String = Default::default();
                 let res = std::fs::metadata("blocklist.txt");
                 if res.is_ok() {
@@ -95,10 +103,8 @@ impl UiServer {
                 }
                 update_str
             }
-            "{#USE_DOH}" => {
-                let filter = mfilter.lock().unwrap();
-                let use_doh = filter.get_use_doh();
-                drop(filter);
+            UiServer::TAG_DNS_TYPE => {
+                let use_doh = srv_cfg.get_use_doh();
                 let use_doh_str = if use_doh {
                     "checked".to_string()
                 } else {
@@ -106,17 +112,17 @@ impl UiServer {
                 };
                 use_doh_str
             }
-            "{#REJECT_STATISTICS}" => {
+            UiServer::TAG_REJECTED_NAMES => {
                 let filter = mfilter.lock().unwrap();
                 let stat_str = filter.prepare_stat_data();
                 drop(filter);
                 stat_str
             }
-            "{#VERSION}" => {
-                let ver_str: String = "1.0".to_string();
+            UiServer::TAG_VERSION => {
+                let ver_str: String = "1.1".to_string();
                 ver_str
             }
-            "{#UPTIME}" => {
+            UiServer::TAG_UPTIME => {
                 let total_secs = self.get_uptime_sec();
                 let seconds = total_secs % 60;
                 let minutes = (total_secs % 3600) / 60;
@@ -126,7 +132,26 @@ impl UiServer {
 
                 uptime_str
             }
-            "{#FILTER_STATUS}" => {
+            UiServer::TAG_TPOOL_STAT => {
+                let mut stat_table: String = Default::default();
+                let workers = srv_cfg.get_tpool_workers();
+                for id in 0..workers {
+                    stat_table += "<tr>\n";
+                    stat_table += "<td>";
+                    stat_table += &id.to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "<td>";
+                    stat_table += &srv_cfg.is_busy(id).to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "<td>";
+                    stat_table += &srv_cfg.get_jobs(id).to_string();
+                    stat_table += "</td>\n";
+                    stat_table += "</tr>\n";
+                }
+
+                stat_table
+            }
+            UiServer::TAG_FILTER_STATUS => {
                 let mut filter = mfilter.lock().unwrap();
                 let mut status_str = "Up to date";
                 if filter.is_updated() {
@@ -143,13 +168,13 @@ impl UiServer {
         return ret_string;
     }
 
-    fn replace_tag(&self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
+    fn replace_tag(&self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
         let mut new_contents: String;
         let opt = contents.find(tag);
         if opt.is_some() {
             let offset = opt.unwrap();
             new_contents = contents[0..offset].to_string();
-            new_contents += &self.get_data_by_tag(tag, mfilter);
+            new_contents += &self.get_data_by_tag(tag, mfilter, srv_cfg);
             new_contents += &contents[offset + tag.len()..contents.len()].to_string();
         } else {
             new_contents = contents.to_string();
@@ -173,7 +198,8 @@ impl UiServer {
         return None;
     }
 
-    fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>) -> String {
+    fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>,
+        mcfg: &Arc<Mutex<LocalConfig>>) -> String {
             
         let mut response: String = Default::default();
         let mut contents: String = Default::default();
@@ -193,7 +219,9 @@ impl UiServer {
                         break;
                     }
                     let tag = tag_opt.unwrap();
-                    contents_temp = self.replace_tag(&tag, &contents_temp, mfilter);
+                    let cfg = mcfg.lock().unwrap();
+                    contents_temp = self.replace_tag(&tag, &contents_temp, mfilter, &cfg);
+                    drop(cfg);
                 }
             }
             contents = contents_temp;
@@ -289,7 +317,7 @@ impl UiServer {
         return Some(ret_vec);
     }
 
-    fn set_post_param(params: &Vec<PostParams>, mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
+    fn set_post_param(params: &Vec<PostParams>, mcfg: &Arc<Mutex<LocalConfig>>) -> bool {
         for param in params.iter() {
             log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
 
@@ -301,9 +329,9 @@ impl UiServer {
                         return false;
                     }
                     let addr: std::net::SocketAddr = std::net::SocketAddr::new(std::net::IpAddr::V4(res.unwrap()), 53);
-                    let mut filter = mfilter.lock().unwrap();
-                    filter.set_dns_srv_addr(addr);
-                    drop(filter);
+                    let mut cfg = mcfg.lock().unwrap();
+                    cfg.set_dns_srv_addr(addr);
+                    drop(cfg);
                 }
                 "use_doh" => {
                     let res = param.value.parse::<bool>();
@@ -311,15 +339,19 @@ impl UiServer {
                         log_error!("Error parsing use_doh\n");
                         return false;
                     }
-                    let mut filter = mfilter.lock().unwrap();
-                    filter.set_use_doh(res.unwrap());
-                    drop(filter);
+                    let mut cfg = mcfg.lock().unwrap();
+                    cfg.set_use_doh(res.unwrap());
+                    drop(cfg);
                 }
                 _ => {
                     log_error!("Unexpected parameter: {}\n", param.name);
                 }
             };
         }
+
+        let cfg = mcfg.lock().unwrap();
+        cfg.write_config();
+        drop(cfg);
 
         return true;
     }
@@ -345,7 +377,7 @@ impl UiServer {
         return true;
     }
 
-    pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>) -> Result<(), std::io::Error> {
+    pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>, mcfg: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         // DNS server already srarted. Check blocklist.txt for update
         let res = FilterConfig::check_update();
         if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
@@ -406,11 +438,15 @@ impl UiServer {
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/start_page.html"), true, mfilter)
+                    self.prepare_content(Some("html/start_page.html"), true, mfilter, mcfg)
+                }
+                "GET /tpool_stats.html HTTP/1.1" => {
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/tpool_stats.html"), true, mfilter, mcfg)
                 }
                 "GET /change_ip.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/change_ip.html"), true, mfilter)
+                    self.prepare_content(Some("html/change_ip.html"), true, mfilter, mcfg)
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);
@@ -421,20 +457,20 @@ impl UiServer {
                         log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
                         let opt = UiServer::parse_post_params(&data);
                         if opt.is_some() {
-                            UiServer::set_post_param(&opt.unwrap(), mfilter);
+                            UiServer::set_post_param(&opt.unwrap(), mcfg);
                         }
                     }
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Location: /");
-                    self.prepare_content(None, false, mfilter)
+                    self.prepare_content(None, false, mfilter, mcfg)
                 }
                 "GET /statistics.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/statistics.html"), true, mfilter)
+                    self.prepare_content(Some("html/statistics.html"), true, mfilter, mcfg)
                 }
                 "GET /update_filter_result.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/update_filter_result.html"), true, mfilter)
+                    self.prepare_content(Some("html/update_filter_result.html"), true, mfilter, mcfg)
                 }
                 "POST /reload_filter HTTP/1.1" => {
                     let mut filter = mfilter.lock().unwrap();
@@ -443,7 +479,7 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /");
-                    self.prepare_content(None, false, mfilter)
+                    self.prepare_content(None, false, mfilter, mcfg)
                 }
                 "POST /update_filter HTTP/1.1" => {
                     let res = FilterConfig::check_update();
@@ -456,11 +492,11 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /update_filter_result.html");
-                    self.prepare_content(None, false, mfilter)
+                    self.prepare_content(None, false, mfilter, mcfg)
                 }
                 "GET /classes.css HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/classes.css"), false, mfilter)
+                    self.prepare_content(Some("html/classes.css"), false, mfilter, mcfg)
                 }
                 "POST /enable_names HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024 * 10);
@@ -478,11 +514,11 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /statistics.html");
-                    self.prepare_content(None, false, mfilter)
+                    self.prepare_content(None, false, mfilter, mcfg)
                 }
                 _ => {
                     self.set_status_code("HTTP/1.1 404 NOT FOUND");
-                    self.prepare_content(Some("html/404.html"), false, mfilter) 
+                    self.prepare_content(Some("html/404.html"), false, mfilter, mcfg) 
                 }
             };
             self.status_code.clear();

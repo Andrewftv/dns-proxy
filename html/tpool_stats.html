@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <link rel="stylesheet" href="classes.css" type="text/css">
+    <meta charset="utf-8">
+    <title>DNS AdCleaner</title>
+    <style>
+      th, td {
+        padding: 5px;
+      }
+      table {
+        border-spacing: 0;
+        border: 1px solid #ddd;
+        margin: left;
+      }
+      tr:nth-child(even) {
+        background-color: #f2f2f2
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Thread pool statistics</h1>
+    <p><a href="/">Home</a></p>
+    <table stype="align=center">
+      <tr>
+        <th>#</th>
+        <th>Busy</th>
+        <th>Jobs complete</th>
+      </tr>
+        {#TPOOL_STAT_TABLE}
+    </table>
+  </body>
+</html>
