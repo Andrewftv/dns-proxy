@@ -19,8 +19,14 @@
     <link rel="stylesheet" href="classes.css" type="text/css">
   </head>
   <body>
-    <h1>Reject statistics</h1>
-    <p><a href="/">Home</a></p>
+    <div class="sidenav">
+      <a href="/">Home</a>
+      <a href="statistics.html">Rejects</a>
+      <a href="tpool_stats.html">Performance</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="main">
+    <h2>Reject statistics</h2>
     <p><form action="enable_names" method="post">
       <table stype="align=center">
         {#REJECT_STATISTICS}
@@ -28,5 +34,6 @@
       <br>
       <button class="mysubmit" id="enable_names_id">Send</button>
     </form></p>
+    </div>
   </body>
 </html>

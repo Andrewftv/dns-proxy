@@ -153,9 +153,9 @@ impl UiServer {
             }
             UiServer::TAG_FILTER_STATUS => {
                 let mut filter = mfilter.lock().unwrap();
-                let mut status_str = "Up to date";
+                let mut status_str = "<strong>Filter up to date</strong>";
                 if filter.is_updated() {
-                    status_str = "Updated";
+                    status_str = "<strong>Filter updated</strong>";
                 }
                 filter.set_update_status(FilterUpdateStatus::Unchanged);
                 drop(filter);
@@ -196,6 +196,34 @@ impl UiServer {
         }
 
         return None;
+    }
+
+    fn read_image(filename: &str) -> Option<Vec<u8>> {
+        let res = std::fs::read(filename);
+        if res.is_err() {
+            let error_kind: ErrorKind = res.as_ref().err().unwrap().kind();
+            log_error!("error = {}\n", error_kind);
+            return None;
+        }
+        let bytes = res.unwrap();
+        log_info!("Image len = {}\n", bytes.len());
+
+        return Some(bytes);
+    }
+
+    fn prepare_bin_context(&mut self, length: usize) -> String {
+        let mut response: String;
+        let contents_len_hdr = format!("Content-Length: {}", length);
+        self.set_response_hdr(&contents_len_hdr);
+        response = self.get_status_code().to_string();
+        response += "\r\n";
+        for hdr in self.response_hdrs.iter() {
+            response += hdr;
+            response += "\r\n";
+        }
+        response += "\r\n";
+
+        return response;
     }
 
     fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>,
@@ -435,6 +463,7 @@ impl UiServer {
             }
             log_debug!("Request for: {}\n", tags[0]);
 
+            let mut bin_data: Vec<u8> = vec![];
             let response = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
@@ -498,6 +527,24 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 200 OK");
                     self.prepare_content(Some("html/classes.css"), false, mfilter, mcfg)
                 }
+                "GET /about.html HTTP/1.1" => {
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(Some("html/about.html"), true, mfilter, mcfg)
+                }
+                "GET /images/banner.png HTTP/1.1" => {
+                    log_debug!("Request image\n");
+                    let res = UiServer::read_image("html/images/banner.png");
+                    if res.is_some() {
+                        log_info!("Image found\n");
+                        bin_data = res.unwrap();
+                        self.set_status_code("HTTP/1.1 200 OK");
+                        self.prepare_bin_context(bin_data.len())
+                    }
+                    else {
+                        log_error!("Image not found\n");
+                        "".to_string()
+                    }
+                }
                 "POST /enable_names HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024 * 10);
                     data.resize(1024 * 10, 0); 
@@ -524,6 +571,11 @@ impl UiServer {
             self.status_code.clear();
             self.clear_response_hdrs();
             stream.write_all(response.as_bytes()).unwrap();
+            if bin_data.len() > 0 {
+                log_debug!("Send bin data\n");
+                stream.write_all(&bin_data).unwrap();
+                bin_data.clear();
+            }
         }
 
         Ok(())

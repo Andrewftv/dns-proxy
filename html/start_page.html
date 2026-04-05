@@ -6,10 +6,15 @@
     <title>DNS AdCleaner</title>
   </head>
   <body>
-    <h1>AdCleaner</h1>
-    <p>Version {#VERSION}</p>
-    <p>Filter has {#ENTRIES} entries</p>
-    <p>Last filter update: {#UPDATE_DATE}
+    <div class="sidenav">
+      <a href="/">Home</a>
+      <a href="statistics.html">Rejects</a>
+      <a href="tpool_stats.html">Performance</a>
+      <a href="about.html">About</a>
+    </div>
+    <div class="main">
+    <img src="images/banner.png" alt="Main banner" width="500px">
+    <h1></h1>
       <p><form action="update_filter" method="post">
         <lable for="update_filter_id">Update filter&emsp;</lable>
         <button class="mysubmit" id="ipdate_filter_id">Send</button>
@@ -18,11 +23,7 @@
         <lable for="reload_filter_id">Reload filter&emsp;</lable>
         <button class="mysubmit" id="reload_filter_id">Send</button>
       </form></p></p>
-    <p>Listen address: {#LISTEN}</p>
     <p>DNS server: {#DNSSRV}&emsp; <a href="change_ip.html" class="button">Change</a></p>
-    <p><a href="statistics.html">Filter configuration and statistics</a></p>
-    <p><a href="tpool_stats.html">Server thread pool statistics</a></p>
-    <br>
-    <p>Uptime: {#UPTIME}</p>
+    </div>
   </body>
 </html>
