@@ -206,7 +206,6 @@ impl UiServer {
             return None;
         }
         let bytes = res.unwrap();
-        log_info!("Image len = {}\n", bytes.len());
 
         return Some(bytes);
     }
@@ -226,17 +225,34 @@ impl UiServer {
         return response;
     }
 
+    fn prepare_error_content(err: u32) -> String {
+        let mut response: String;
+        let mut contents: String = "<html><head><title>Error</title></head><body><p>Something went wrong</p><p>Error: ".to_string();
+        contents += &err.to_string();
+        contents += "</p></body></html>";
+
+        response = "HTTP/1.1 ".to_string();
+        response += &err.to_string();
+        response += " Internal server error\r\n";
+        response += "Content-Length: ";
+        response += &contents.len().to_string();
+        response += "\r\n\r\n";
+        response += &contents;
+
+        return response;
+    }
+
     fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>,
-        mcfg: &Arc<Mutex<LocalConfig>>) -> String {
-            
-        let mut response: String = Default::default();
+        mcfg: &Arc<Mutex<LocalConfig>>) -> Result<String, u32> {
+
+        let mut response: String;
         let mut contents: String = Default::default();
         if filename.is_some() {
             let name: &str = filename.unwrap();
             let cont_res = std::fs::read_to_string(name);
             if cont_res.is_err() {
                 log_error!("Unable to open {}\n", name);
-                return response;
+                return Err(500);
             }
 
             let mut contents_temp = cont_res.unwrap();
@@ -269,7 +285,7 @@ impl UiServer {
         response += "\r\n";
         response += &contents;
 
-        return response;
+        return Ok(response);
     } 
 
     fn get_request_tags(request: &String) -> Vec<String> {
@@ -464,18 +480,33 @@ impl UiServer {
             log_debug!("Request for: {}\n", tags[0]);
 
             let mut bin_data: Vec<u8> = vec![];
-            let response = match &tags[0][..] {
+            let response: String = match &tags[0][..] {
                 "GET / HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/start_page.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/start_page.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "GET /tpool_stats.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/tpool_stats.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/tpool_stats.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "GET /change_ip.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/change_ip.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/change_ip.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);
@@ -491,15 +522,25 @@ impl UiServer {
                     }
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Location: /");
-                    self.prepare_content(None, false, mfilter, mcfg)
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "GET /statistics.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/statistics.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/statistics.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "GET /update_filter_result.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/update_filter_result.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/update_filter_result.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "POST /reload_filter HTTP/1.1" => {
                     let mut filter = mfilter.lock().unwrap();
@@ -508,7 +549,7 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /");
-                    self.prepare_content(None, false, mfilter, mcfg)
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "POST /update_filter HTTP/1.1" => {
                     let res = FilterConfig::check_update();
@@ -521,27 +562,34 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /update_filter_result.html");
-                    self.prepare_content(None, false, mfilter, mcfg)
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "GET /classes.css HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/classes.css"), false, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/classes.css"), false, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "GET /about.html HTTP/1.1" => {
                     self.set_status_code("HTTP/1.1 200 OK");
-                    self.prepare_content(Some("html/about.html"), true, mfilter, mcfg)
+                    let rc = self.prepare_content(Some("html/about.html"), true, mfilter, mcfg);
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
                 "GET /images/banner.png HTTP/1.1" => {
-                    log_debug!("Request image\n");
                     let res = UiServer::read_image("html/images/banner.png");
                     if res.is_some() {
-                        log_info!("Image found\n");
                         bin_data = res.unwrap();
                         self.set_status_code("HTTP/1.1 200 OK");
                         self.prepare_bin_context(bin_data.len())
                     }
                     else {
-                        log_error!("Image not found\n");
                         "".to_string()
                     }
                 }
@@ -561,18 +609,22 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /statistics.html");
-                    self.prepare_content(None, false, mfilter, mcfg)
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 _ => {
                     self.set_status_code("HTTP/1.1 404 NOT FOUND");
-                    self.prepare_content(Some("html/404.html"), false, mfilter, mcfg) 
+                    let rc = self.prepare_content(Some("html/404.html"), false, mfilter, mcfg) ;
+                    if rc.is_ok() {
+                        rc.unwrap()
+                    } else {
+                        UiServer::prepare_error_content(rc.unwrap_err())
+                    }
                 }
             };
             self.status_code.clear();
             self.clear_response_hdrs();
             stream.write_all(response.as_bytes()).unwrap();
             if bin_data.len() > 0 {
-                log_debug!("Send bin data\n");
                 stream.write_all(&bin_data).unwrap();
                 bin_data.clear();
             }
