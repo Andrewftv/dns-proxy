@@ -210,7 +210,7 @@ impl UiServer {
         return Some(bytes);
     }
 
-    fn prepare_bin_context(&mut self, length: usize) -> String {
+    fn prepare_bin_context(&mut self, length: usize) -> Vec<u8> {
         let mut response: String;
         let contents_len_hdr = format!("Content-Length: {}", length);
         self.set_response_hdr(&contents_len_hdr);
@@ -222,10 +222,10 @@ impl UiServer {
         }
         response += "\r\n";
 
-        return response;
+        return response.into_bytes();
     }
 
-    fn prepare_error_content(err: u32) -> String {
+    fn prepare_error_content(err: u32) -> Vec<u8> {
         let mut response: String;
         let mut contents: String = "<html><head><title>Error</title></head><body><p>Something went wrong</p><p>Error: ".to_string();
         contents += &err.to_string();
@@ -239,11 +239,11 @@ impl UiServer {
         response += "\r\n\r\n";
         response += &contents;
 
-        return response;
+        return response.into_bytes();
     }
 
     fn prepare_content(&mut self, filename: Option<&str>, post_process: bool, mfilter: &Arc<Mutex<FilterConfig>>,
-        mcfg: &Arc<Mutex<LocalConfig>>) -> Result<String, u32> {
+        mcfg: &Arc<Mutex<LocalConfig>>) -> Result<Vec<u8>, u32> {
 
         let mut response: String;
         let mut contents: String = Default::default();
@@ -285,7 +285,7 @@ impl UiServer {
         response += "\r\n";
         response += &contents;
 
-        return Ok(response);
+        return Ok(response.into_bytes());
     } 
 
     fn get_request_tags(request: &String) -> Vec<String> {
@@ -421,6 +421,28 @@ impl UiServer {
         return true;
     }
 
+    fn get_requested_file(tag: String) -> String {
+        let mut name: String = Default::default();
+        let rc = tag.find(' ');
+        if rc.is_none() {
+            return name;
+        }
+        let start = rc.unwrap() + 1;
+        let rc = tag[start..].find(' ');
+        if rc.is_none() {
+            return name;
+        }
+        let end = rc.unwrap() + start;
+        name = tag[start..end].to_string();
+        if name == "/" {
+            name = "html/start_page.html".to_string();
+        } else {
+            name = "html".to_string() + &name;
+        }
+
+        return name;
+    }
+
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>, mcfg: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         // DNS server already srarted. Check blocklist.txt for update
         let res = FilterConfig::check_update();
@@ -479,33 +501,35 @@ impl UiServer {
             }
             log_debug!("Request for: {}\n", tags[0]);
 
-            let mut bin_data: Vec<u8> = vec![];
-            let response: String = match &tags[0][..] {
-                "GET / HTTP/1.1" => {
+            let response: Vec<u8> = match &tags[0][..] {
+                "GET / HTTP/1.1" |
+                "GET /tpool_stats.html HTTP/1.1" |
+                "GET /statistics.html HTTP/1.1" |
+                "GET /about.html HTTP/1.1" |
+                "GET /change_ip.html HTTP/1.1" |
+                "GET /update_filter_result.html HTTP/1.1" |
+                "GET /classes.css HTTP/1.1" => {
+                    let name = UiServer::get_requested_file(tags[0][..].to_string());
                     self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/start_page.html"), true, mfilter, mcfg);
+                    let rc = self.prepare_content(Some(&name), true, mfilter, mcfg);
                     if rc.is_ok() {
                         rc.unwrap()
                     } else {
                         UiServer::prepare_error_content(rc.unwrap_err())
                     }
                 }
-                "GET /tpool_stats.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/tpool_stats.html"), true, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
+                "GET /images/banner.png HTTP/1.1" => {
+                    let name = UiServer::get_requested_file(tags[0][..].to_string());
+                    let res = UiServer::read_image(&name);
+                    if res.is_some() {
+                        let bin_data = res.unwrap();
+                        self.set_status_code("HTTP/1.1 200 OK");
+                        let mut response = self.prepare_bin_context(bin_data.len());
+                        response.extend(bin_data);
+                        response
                     }
-                }
-                "GET /change_ip.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/change_ip.html"), true, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
+                    else {
+                        "".to_string().into_bytes()
                     }
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
@@ -521,26 +545,9 @@ impl UiServer {
                         }
                     }
                     self.set_status_code("HTTP/1.1 301 Redirect");
+                    self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /");
                     self.prepare_content(None, false, mfilter, mcfg).unwrap()
-                }
-                "GET /statistics.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/statistics.html"), true, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
-                    }
-                }
-                "GET /update_filter_result.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/update_filter_result.html"), true, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
-                    }
                 }
                 "POST /reload_filter HTTP/1.1" => {
                     let mut filter = mfilter.lock().unwrap();
@@ -563,35 +570,6 @@ impl UiServer {
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /update_filter_result.html");
                     self.prepare_content(None, false, mfilter, mcfg).unwrap()
-                }
-                "GET /classes.css HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/classes.css"), false, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
-                    }
-                }
-                "GET /about.html HTTP/1.1" => {
-                    self.set_status_code("HTTP/1.1 200 OK");
-                    let rc = self.prepare_content(Some("html/about.html"), true, mfilter, mcfg);
-                    if rc.is_ok() {
-                        rc.unwrap()
-                    } else {
-                        UiServer::prepare_error_content(rc.unwrap_err())
-                    }
-                }
-                "GET /images/banner.png HTTP/1.1" => {
-                    let res = UiServer::read_image("html/images/banner.png");
-                    if res.is_some() {
-                        bin_data = res.unwrap();
-                        self.set_status_code("HTTP/1.1 200 OK");
-                        self.prepare_bin_context(bin_data.len())
-                    }
-                    else {
-                        "".to_string()
-                    }
                 }
                 "POST /enable_names HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024 * 10);
@@ -623,11 +601,7 @@ impl UiServer {
             };
             self.status_code.clear();
             self.clear_response_hdrs();
-            stream.write_all(response.as_bytes()).unwrap();
-            if bin_data.len() > 0 {
-                stream.write_all(&bin_data).unwrap();
-                bin_data.clear();
-            }
+            stream.write_all(&response).unwrap();
         }
 
         Ok(())
