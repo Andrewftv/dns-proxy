@@ -511,6 +511,15 @@ impl UiServer {
                 "GET /classes.css HTTP/1.1" => {
                     let name = UiServer::get_requested_file(tags[0][..].to_string());
                     self.set_status_code("HTTP/1.1 200 OK");
+                    let opt = name.rfind('.');
+                    if opt.is_some() {
+                        let pos = opt.unwrap() + 1;
+                        if &name[pos..] == "css" {
+                            self.set_response_hdr("Content-Type: text/css");
+                        } else if &name[pos..] == "html" {
+                            self.set_response_hdr("Content-Type: text/html");
+                        }
+                    }
                     let rc = self.prepare_content(Some(&name), true, mfilter, mcfg);
                     if rc.is_ok() {
                         rc.unwrap()
@@ -524,6 +533,8 @@ impl UiServer {
                     if res.is_some() {
                         let bin_data = res.unwrap();
                         self.set_status_code("HTTP/1.1 200 OK");
+                        self.set_response_hdr("Cache-Control: max-age=604800");
+                        self.set_response_hdr("Content-Type: image/png");
                         let mut response = self.prepare_bin_context(bin_data.len());
                         response.extend(bin_data);
                         response
@@ -601,7 +612,20 @@ impl UiServer {
             };
             self.status_code.clear();
             self.clear_response_hdrs();
-            stream.write_all(&response).unwrap();
+            let mut sent: usize = 0;
+            while sent < response.len() {
+                let res = stream.write(&response[sent..]);
+                if res.is_err() {
+                    let error = res.err().unwrap();
+                    if error.kind() == ErrorKind::WouldBlock {
+                        thread::sleep(Duration::from_millis(10)); // Use epool
+                        continue;
+                    }
+                    log_error!("Send failed\n");
+                    break;
+                }
+                sent += res.unwrap();
+            }
         }
 
         Ok(())
