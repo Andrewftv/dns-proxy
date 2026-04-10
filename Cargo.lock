@@ -134,7 +134,7 @@ dependencies = [
 
 [[package]]
 name = "dns-proxy"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "ctrlc",
