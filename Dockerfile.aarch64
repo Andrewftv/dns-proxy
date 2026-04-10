@@ -1,11 +1,13 @@
-FROM ubuntu:24.04
+FROM alpine
 
-RUN  apt-get update && apt-get -y install curl
 WORKDIR /usr/dns-adblock/
-
-COPY ./target/aarch64-unknown-linux-gnu/release/dns-proxy /usr/dns-adblock/dns-proxy
+# Executable
+COPY ./target/aarch64-unknown-linux-musl/release/dns-proxy /usr/dns-adblock/dns-proxy
+# Local block list
 COPY ./local-blocklist.txt /usr/dns-adblock/local-blocklist.txt
+# Config file
 COPY ./config.json /usr/dns-adblock/config.json
+# html files
 COPY ./html/404.html /usr/dns-adblock/html/404.html
 COPY ./html/change_ip.html /usr/dns-adblock/html/change_ip.html
 COPY ./html/classes.css /usr/dns-adblock/html/classes.css
@@ -13,6 +15,9 @@ COPY ./html/start_page.html /usr/dns-adblock/html/start_page.html
 COPY ./html/statistics.html /usr/dns-adblock/html/statistics.html
 COPY ./html/tpool_stats.html /usr/dns-adblock/html/tpool_stats.html
 COPY ./html/update_filter_result.html /usr/dns-adblock/html/update_filter_result.html
+COPY ./html/about.html /usr/dns-adblock/html/about.html
+# Image  files
+COPY ./html/images/banner.png /usr/dns-adblock/html/images/banner.png
 
 CMD ["/usr/dns-adblock/dns-proxy"]
 
