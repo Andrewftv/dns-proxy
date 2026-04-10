@@ -527,6 +527,7 @@ impl UiServer {
                         UiServer::prepare_error_content(rc.unwrap_err())
                     }
                 }
+                "GET /favicon.ico HTTP/1.1" |
                 "GET /images/banner.png HTTP/1.1" => {
                     let name = UiServer::get_requested_file(tags[0][..].to_string());
                     let res = UiServer::read_image(&name);
