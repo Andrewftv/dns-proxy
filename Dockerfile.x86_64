@@ -19,6 +19,7 @@ COPY ./html/update_filter_result.html /usr/dns-adblock/html/update_filter_result
 COPY ./html/about.html /usr/dns-adblock/html/about.html
 # Image  files
 COPY ./html/images/banner.png /usr/dns-adblock/html/images/banner.png
+COPY ./html/favicon.ico /usr/dns-adblock/html/favicon.ico
 
 CMD ["/usr/dns-adblock/dns-proxy"]
 
