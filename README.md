@@ -11,14 +11,14 @@ The build process is performed on a Linux machine (Windows is untested). Alterna
 ```
 cargo build --release
 ```
-### Build on host Linux machine for ARM v7(raspberry pi 32 bits)
+### Build on host Linux machine for ARM v7 or AARCH64
 ```
 cargo build --release --target=armv7-unknown-linux-musleabihf
 ```
 ```
 cargo build --release --target=aarch64-unknown-linux-musl
 ```
-### Create docker image on host machine for ARM v7(raspberry pi 32 bits)
+### Create docker image on host machine for ARM v7 or AARCH64
 ```
 docker build -f Dockerfile.arm_v7 --no-cache --platform linux/arm/v7 -t dns-proxy:arm_v7 .
 ```
@@ -39,7 +39,7 @@ docker load -i dns-proxy-arm_v7.tar
 ```
 docker load -i dns-proxy-aarch64.tar
 ```
-### Run docker container on target machine(raspberry pi 32 bits)
+### Run docker container on target machine
 For single run
 ```
 docker run --rm -p 53:53/udp -p 8080:8080 dns-proxy:arm_v7
