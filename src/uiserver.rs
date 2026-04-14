@@ -30,7 +30,8 @@ pub struct UiServer {
     pub running: Arc<AtomicBool>,
     status_code: String,
     response_hdrs: Vec<String>,
-    start_time: SystemTime
+    start_time: SystemTime,
+    last_filter_update_check: SystemTime
 }
 
 impl UiServer {
@@ -44,6 +45,7 @@ impl UiServer {
     const TAG_UPTIME: &str = "{#UPTIME}";
     const TAG_TPOOL_STAT: &str = "{#TPOOL_STAT_TABLE}";
     const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
+    const TAG_UPDATE_CHECK: &str = "{#UPDATE_CHECK}";
 
     pub fn new() -> UiServer {
         UiServer
@@ -51,7 +53,8 @@ impl UiServer {
             running: Arc::new(AtomicBool::new(true)),
             status_code: Default::default(),
             response_hdrs: vec![],
-            start_time: SystemTime::now()
+            start_time: SystemTime::now(),
+            last_filter_update_check: SystemTime::now()
         }
     }
 
@@ -102,6 +105,11 @@ impl UiServer {
                     }
                 }
                 update_str
+            }
+            UiServer::TAG_UPDATE_CHECK => {
+                let datetime: DateTime<Local> = self.last_filter_update_check.into();
+                let check_str = datetime.format("%Y/%m/%d %T").to_string();
+                check_str
             }
             UiServer::TAG_DNS_TYPE => {
                 let use_doh = srv_cfg.get_use_doh();
@@ -445,6 +453,7 @@ impl UiServer {
 
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>, mcfg: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         // DNS server already srarted. Check blocklist.txt for update
+        self.last_filter_update_check = SystemTime::now();
         let res = FilterConfig::check_update();
         if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
             let mut filter = mfilter.lock().unwrap();
@@ -464,11 +473,28 @@ impl UiServer {
                 log_info!("UI server stoped by user\n");
                 return Err(Error::new(std::io::ErrorKind::Other, "Stoped by user"));
             }
-
             if stream.is_err() {
                 let err_kind = stream.as_ref().err().unwrap().kind();
                 if err_kind == ErrorKind::WouldBlock {
-                    thread::sleep(Duration::from_millis(100));
+                    let now = SystemTime::now();
+                    let res = now.duration_since(self.last_filter_update_check);
+                    if res.is_err() {
+                        continue;
+                    }
+                    let durution = res.unwrap();
+                    /* Check one time per day */
+                    if durution.as_secs() >= Duration::from_hours(24).as_secs() {
+                        log_info!("Check filter update\n");
+                        self.last_filter_update_check = SystemTime::now();
+                        let res = FilterConfig::check_update();
+                        if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
+                            let mut filter = mfilter.lock().unwrap();
+                            let _ = filter.reload_filter();
+                            drop(filter);
+                        }
+                    } else {
+                        thread::sleep(Duration::from_millis(100));
+                    }
                     continue;
                 }
                 log_error!("Tcp stream failed\n");
@@ -571,6 +597,7 @@ impl UiServer {
                     self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "POST /update_filter HTTP/1.1" => {
+                    self.last_filter_update_check = SystemTime::now();
                     let res = FilterConfig::check_update();
                     if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
                         let mut filter = mfilter.lock().unwrap();
