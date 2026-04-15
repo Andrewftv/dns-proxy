@@ -18,31 +18,43 @@ a.button {
     font-size: large;
     font-family: "Times New Roman", Times, serif;
     }
-.sidenav {
-    width: 200px;
-    position: fixed;
-    z-index: 1;
-    top: 19px;
-    left: 10px;
-    bottom: 20px;
-    background: #eee;
-    overflow-x: hidden;
-    padding: 8px 0;
-    border: 1px solid black;
+
+.container {
+    display: grid;
+    grid-template-areas: 
+      "menu header"
+      "menu content";
+    grid-template-columns: 1fr 4fr;
+    background-color: black;
+    padding: 2px;
+    gap: 1px;
+  }
+  .container div {
+    background-color: white;
+    padding: 0px;
+  }
+  .container div.header {
+    grid-area: header;
+    text-align: center;
+    padding-top: 5px;
+  }
+  .container div.menu {
+    background-color: #eee;
+    grid-area: menu;
+    padding: 10px;
+  }
+  .container div.contant {
+    grid-area: content;
+  }
+  table {
+    border-collapse: collapse;
+  }
+  td, th {
+    border: 1px solid #eee;
+    text-align: left;
+    padding: 8px;
   }
 
-  .sidenav a {
-    padding: 6px 8px 6px 16px;
-    text-decoration: none;
-    font-size: 18px;
-    color: #2196F3;
-    display: block;
+  tr:nth-child(even) {
+    background-color: #eee;
   }
-
-  .sidenav a:hover {
-    color: #064579;
-  }
-  .main {
-    margin-left: 210px; /* Same width as the sidebar + left position in px */
-    padding: 10px 10px;
-  }  

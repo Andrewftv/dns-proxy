@@ -86,7 +86,7 @@ impl UiServer {
                 let dns_srv_addr = srv_cfg.get_dns_srv_addr();
                 
                 let addr_port_str = if use_doh {
-                    dns_srv_addr.ip().to_string() + ":DNS over HTTPS"
+                    dns_srv_addr.ip().to_string() + ":DoH"
                 } else {
                     dns_srv_addr.to_string()    
                 };

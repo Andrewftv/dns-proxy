@@ -3,37 +3,27 @@
   <head>
     <meta charset="utf-8">
     <title>DNS AdCleaner</title>
-    <style>
-      th, td {
-        padding: 5px;
-      }
-      table {
-        border-spacing: 0;
-        border: 1px solid #ddd;
-        margin: left;
-      }
-      tr:nth-child(even) {
-        background-color: #f2f2f2
-      }
-    </style>
     <link rel="stylesheet" href="classes.css" type="text/css">
   </head>
   <body>
-    <div class="sidenav">
-      <a href="/">Home</a>
-      <a href="statistics.html">Rejects</a>
-      <a href="tpool_stats.html">Performance</a>
-      <a href="about.html">About</a>
-    </div>
-    <div class="main">
-    <h2>Reject statistics</h2>
-    <p><form action="enable_names" method="post">
-      <table stype="align=center">
-        {#REJECT_STATISTICS}
-      </table>
-      <br>
-      <button class="mysubmit" id="enable_names_id">Send</button>
-    </form></p>
+    <div class="container">
+      <div class="menu">
+        <p><a href="/">Home</a></p>
+        <p><a href="statistics.html">Rejects</a></p>
+        <p><a href="tpool_stats.html">Performance</a></p>
+        <p><a href="about.html">About</a></p>  
+      </div>
+      <div class="header">
+        <h2>Reject statistics</h2>
+      </div>
+      <div class="contant">
+        <form action="enable_names" method="post">
+          <table>
+            {#REJECT_STATISTICS}
+          </table>
+          <button class="mysubmit" style="margin: 10px" id="enable_names_id">Send</button>
+        </form>
+      </div>
     </div>
   </body>
 </html>

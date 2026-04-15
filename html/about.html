@@ -6,21 +6,44 @@
     <link rel="stylesheet" href="classes.css" type="text/css">
   </head>
   <body>
-    <div class="sidenav">
-      <a href="/">Home</a>
-      <a href="statistics.html">Rejects</a>
-      <a href="tpool_stats.html">Performance</a>
-      <a href="about.html">About</a>
-    </div>
-    <div class="main">
-    <h2>About AdCleaner</h2>
-    <p>Version {#VERSION}</p>
-    <p>Filter has {#ENTRIES} entries</p>
-    <p>Last update check: {#UPDATE_CHECK}</p>
-    <p>Last filter update: {#UPDATE_DATE}</p>
-    <p>Listen address: {#LISTEN}</p>
-    <br>
-    <p>Uptime: {#UPTIME}</p>
+    <div class="container">
+      <div class="menu">
+        <p><a href="/">Home</a></p>
+        <p><a href="statistics.html">Rejects</a></p>
+        <p><a href="tpool_stats.html">Performance</a></p>
+        <p><a href="about.html">About</a></p>  
+      </div>
+      <div class="header">
+        <h2>About AdCleaner</h2>
+      </div>
+      <div class="contant">
+        <table>
+          <tr>
+            <td>Version:</td>
+            <td>{#VERSION}</td>
+          </tr>
+          <tr>
+            <td>Filter has</td>
+            <td>{#ENTRIES} entries</td>
+          </tr>
+          <tr>
+            <td>Last update check:</td>
+            <td>{#UPDATE_CHECK}</td>
+          </tr>
+          <tr>
+            <td>Last filter update:</td>
+            <td>{#UPDATE_DATE}</td>
+          </tr>
+          <tr>
+            <td>Listen address:</td>
+            <td>{#LISTEN}</td>
+          </tr>
+          <tr>
+            <td>Uptime:</td>
+            <td>{#UPTIME}</td>
+          </tr>
+        </table>
+      </div>
     </div>
   </body>
 </html>
