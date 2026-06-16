@@ -31,7 +31,8 @@ pub struct UiServer {
     status_code: String,
     response_hdrs: Vec<String>,
     start_time: SystemTime,
-    last_filter_update_check: SystemTime
+    last_filter_update_check: SystemTime,
+    show_popup: bool
 }
 
 impl UiServer {
@@ -46,6 +47,7 @@ impl UiServer {
     const TAG_TPOOL_STAT: &str = "{#TPOOL_STAT_TABLE}";
     const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
     const TAG_UPDATE_CHECK: &str = "{#UPDATE_CHECK}";
+    const TAG_HIDE_POPUP: &str = "{#HIDE_POPUP}";
 
     pub fn new() -> UiServer {
         UiServer
@@ -54,7 +56,8 @@ impl UiServer {
             status_code: Default::default(),
             response_hdrs: vec![],
             start_time: SystemTime::now(),
-            last_filter_update_check: SystemTime::now()
+            last_filter_update_check: SystemTime::now(),
+            show_popup: false
         }
     }
 
@@ -69,7 +72,7 @@ impl UiServer {
         return duration.as_secs();
     }
 
-    fn get_data_by_tag(&self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
+    fn get_data_by_tag(&mut self, tag: &str, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
         let ret_string: String = match tag {
             UiServer::TAG_FILTER_ENTRIES => {
                 let filter = mfilter.lock().unwrap();
@@ -159,11 +162,20 @@ impl UiServer {
 
                 stat_table
             }
+            UiServer::TAG_HIDE_POPUP => {
+                let mut hide_popup: String = Default::default();
+                if self.show_popup == false {
+                    hide_popup = "hidden".to_string();
+                } else {
+                    self.show_popup = false;
+                }
+                hide_popup
+            }
             UiServer::TAG_FILTER_STATUS => {
                 let mut filter = mfilter.lock().unwrap();
-                let mut status_str = "<strong>Filter up to date</strong>";
+                let mut status_str = "<strong>Filter is up to date</strong>";
                 if filter.is_updated() {
-                    status_str = "<strong>Filter updated</strong>";
+                    status_str = "<strong>Filter was updated</strong>";
                 }
                 filter.set_update_status(FilterUpdateStatus::Unchanged);
                 drop(filter);
@@ -176,7 +188,7 @@ impl UiServer {
         return ret_string;
     }
 
-    fn replace_tag(&self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
+    fn replace_tag(&mut self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
         let mut new_contents: String;
         let opt = contents.find(tag);
         if opt.is_some() {
@@ -605,9 +617,10 @@ impl UiServer {
                         filter.set_update_status(FilterUpdateStatus::Updated);
                         drop(filter);
                     }
+                    self.show_popup = true;
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
-                    self.set_response_hdr("Location: /update_filter_result.html");
+                    self.set_response_hdr("Location: /");
                     self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "POST /enable_names HTTP/1.1" => {

@@ -103,6 +103,8 @@ pub struct FilterConfig {
 }
 
 impl FilterConfig {
+    const URL_BLOCKLIST: &str = "https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt";
+
     pub fn new() -> FilterConfig {
         log_info!("Create new filter\n");
         FilterConfig
@@ -155,7 +157,7 @@ impl FilterConfig {
     pub fn check_update() -> Result<FilterUpdateStatus, curl::Error> {
         // Get remote file length
         let mut curl = Easy::new();
-        let res = curl.url("https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt"); 
+        let res = curl.url(FilterConfig::URL_BLOCKLIST);
         if res.is_err() {
             log_error!("Invalid URL\n");
             return Err(res.err().unwrap());

@@ -4,6 +4,25 @@
     <link rel="stylesheet" href="classes.css" type="text/css">
     <meta charset="utf-8">
     <title>DNS AdCleaner</title>
+    <style>
+      .callout {
+        position: fixed;
+        bottom: 35px;
+        right: 20px;
+        margin-left: 200px;
+        min-width: fit-content;
+        height: fit-content;
+        border-radius: 8px;
+        background-color: darkseagreen;
+      }
+
+      .callout-container {
+        padding: 10px;
+        color: white;
+        margin: 0;
+      }
+
+    </style>
   </head>
   <body>
     <div class="container">
@@ -41,5 +60,20 @@
         </table>
       </div>
     </div>
+
+    <div {#HIDE_POPUP} class="callout" id="myCallout">
+      <p class="callout-container">{#FILTER_STATUS}</p>
+    </div>
+
+    <script>
+      function hidePopup() {
+      var popup = document.getElementById("myCallout");
+      popup.style.display='none';
+    }
+
+    var popup = document.getElementById("myCallout");
+    setTimeout(hidePopup, 3000);
+    </script>
+
   </body>
 </html>
