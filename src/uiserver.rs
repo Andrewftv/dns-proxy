@@ -176,6 +176,8 @@ impl UiServer {
                 let mut status_str = "<strong>Filter is up to date</strong>";
                 if filter.is_updated() {
                     status_str = "<strong>Filter was updated</strong>";
+                } else if filter.is_reloaded() {
+                    status_str = "<strong>Filter was reloaded</strong>"
                 }
                 filter.set_update_status(FilterUpdateStatus::Unchanged);
                 drop(filter);
@@ -545,7 +547,6 @@ impl UiServer {
                 "GET /statistics.html HTTP/1.1" |
                 "GET /about.html HTTP/1.1" |
                 "GET /change_ip.html HTTP/1.1" |
-                "GET /update_filter_result.html HTTP/1.1" |
                 "GET /classes.css HTTP/1.1" => {
                     let name = UiServer::get_requested_file(tags[0][..].to_string());
                     self.set_status_code("HTTP/1.1 200 OK");
@@ -602,7 +603,9 @@ impl UiServer {
                 "POST /reload_filter HTTP/1.1" => {
                     let mut filter = mfilter.lock().unwrap();
                     let _ = filter.reload_filter();
+                    filter.set_update_status(FilterUpdateStatus::Reloaded);
                     drop(filter);
+                    self.show_popup = true;
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
                     self.set_response_hdr("Location: /");

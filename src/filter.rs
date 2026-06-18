@@ -94,7 +94,8 @@ impl Statistics {
 #[derive(PartialEq)]
 pub enum FilterUpdateStatus {
     Unchanged,
-    Updated
+    Updated,
+    Reloaded
 }
 
 pub struct FilterConfig {
@@ -120,6 +121,10 @@ impl FilterConfig {
 
     pub fn is_updated(&self) -> bool {
         return self.update_status == FilterUpdateStatus::Updated;
+    }
+
+    pub fn is_reloaded(&self) -> bool {
+        return self.update_status == FilterUpdateStatus::Reloaded;
     }
 
     pub fn prepare_stat_data(&self) -> String {
