@@ -10,6 +10,9 @@ use std::io::Write;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
 
+const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
+const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
+
 #[derive(Clone, PartialEq)]
 pub enum FilterType {
     Global,
@@ -17,7 +20,7 @@ pub enum FilterType {
 }
 
 fn get_local_file_length() -> Result<u64, std::io::Error> {
-    let res = File::open("blocklist.txt");
+    let res = File::open(BLOCKLIST_FILE_NAME);
     if res.is_err() {
         log_error!("Unable to open blocklist.txt\n");
         return Err(res.err().unwrap());
@@ -105,6 +108,9 @@ pub struct FilterConfig {
 
 impl FilterConfig {
     const URL_BLOCKLIST: &str = "https://raw.githubusercontent.com/ph00lt0/blocklists/master/blocklist.txt";
+    const REMOVE_PARAM_TAG: &str = "$removeparam";
+    const BAD_PARAM_TAG: &str = "$badfilter";
+    const THIRD_PARTY_TAG: &str = "$third-party";
 
     pub fn new() -> FilterConfig {
         log_info!("Create new filter\n");
@@ -185,7 +191,7 @@ impl FilterConfig {
         }
         // Get content
         log_info!("Download new file\n");
-        let mut file = File::create("blocklist.txt");
+        let mut file = File::create(BLOCKLIST_FILE_NAME);
         if file.is_err() {
             log_error!("Unable to create file\n");
             #[cfg(target_os = "windows")]
@@ -247,10 +253,7 @@ impl FilterConfig {
     }
 
     pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {
-        let remove_param : &str = "$removeparam";
-        let bad_filter : &str = "$badfilter";
-        let third_party : &str = "$third-party";
-        let filter_files: Vec<&str> = Vec::from(["blocklist.txt", "local-blocklist.txt"]);
+        let filter_files: Vec<&str> = Vec::from([BLOCKLIST_FILE_NAME, LOCAL_BLOCKLIST_FILE_NAME]);
 
         for index in 0..filter_files.capacity() {
             log_info!("Parse {} block list\n", filter_files[index]);
@@ -286,13 +289,13 @@ impl FilterConfig {
                 let mut second_part = single_line.split_off(pos);
                 // Remove "^"
                 second_part.remove(0);
-                if second_part.contains(bad_filter) {
+                if second_part.contains(FilterConfig::BAD_PARAM_TAG) {
                     continue;
                 }
-                if second_part.contains(remove_param) {
+                if second_part.contains(FilterConfig::REMOVE_PARAM_TAG) {
                     continue;
                 }
-                if second_part.contains(third_party) {
+                if second_part.contains(FilterConfig::THIRD_PARTY_TAG) {
                     continue;
                 }
                 single_line.truncate(pos);

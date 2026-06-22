@@ -14,6 +14,7 @@ pub struct LocalConfig {
 }
 
 impl LocalConfig {
+    const CFG_FILE_NAME: &str = "config.json";
     const LISTEN_ADDR_NAME: &str = "listen_address";
     const LISTEN_PORT_NAME: &str = "listen_port";
     const DNS_SERVER_NAME: &str = "DNS_server";
@@ -79,7 +80,7 @@ impl LocalConfig {
 
         log_debug!("{}\n", data);
 
-        let res = fs::write("config.json", data);
+        let res = fs::write(LocalConfig::CFG_FILE_NAME, data);
         if res.is_err() {
             log_error!("Error write configuration file\n");
             return false;
