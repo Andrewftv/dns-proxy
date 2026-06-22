@@ -19,55 +19,6 @@ pub enum FilterType {
     Local
 }
 
-fn get_local_file_length() -> Result<u64, std::io::Error> {
-    let res = File::open(BLOCKLIST_FILE_NAME);
-    if res.is_err() {
-        log_error!("Unable to open blocklist.txt\n");
-        return Err(res.err().unwrap());
-    }
-    let file = res.unwrap();
-    let metadata = file.metadata().unwrap();
-
-    Ok(metadata.len())
-}
-
-fn get_remote_file_length(curl: &mut Easy) -> Result<u64, curl::Error> {
-    let rlen: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
-
-    let len = Arc::clone(&rlen);
-    curl.header_function(move |header| {
-        let hlen = "content-length";
-        let mut hstr = String::from_utf8(header.to_vec()).unwrap().to_lowercase();
-        let mut opt_pos = hstr.find(hlen);
-        if opt_pos.is_some() {
-            opt_pos = hstr.find(":");
-            if opt_pos.is_some() {
-                let mut pos = opt_pos.unwrap();
-                pos += 1;
-                while hstr.chars().nth(pos).unwrap() == ' ' {
-                    pos += 1;
-                }
-                let mut str_file_len = hstr.split_off(pos);
-                str_file_len.truncate(str_file_len.len() - 2);
-                let file_len_res = str_file_len.parse::<u64>();
-                if file_len_res.is_ok() {
-                    let mut value = len.lock().unwrap();
-                    *value = file_len_res.unwrap();
-                }
-            }
-        }
-
-        true
-    }).unwrap();
-    let res = curl.perform();
-    if res.is_err() {
-        log_error!("Unanle to get headers\n");
-        return Err(res.err().unwrap());
-    }
-    let value = rlen.lock().unwrap();
-    Ok(*value)
-}
-
 #[derive(Clone)]
 struct Statistics {
     requests : u64,
@@ -119,6 +70,55 @@ impl FilterConfig {
             ads_provider_list: BTreeMap::new(),
             update_status: FilterUpdateStatus::Unchanged
         }
+    }
+
+    fn get_remote_blocklist_length(curl: &mut Easy) -> Result<u64, curl::Error> {
+        let rlen: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+
+        let len = Arc::clone(&rlen);
+        curl.header_function(move |header| {
+            let hlen = "content-length";
+            let mut hstr = String::from_utf8(header.to_vec()).unwrap().to_lowercase();
+            let mut opt_pos = hstr.find(hlen);
+            if opt_pos.is_some() {
+                opt_pos = hstr.find(":");
+                if opt_pos.is_some() {
+                    let mut pos = opt_pos.unwrap();
+                    pos += 1;
+                    while hstr.chars().nth(pos).unwrap() == ' ' {
+                        pos += 1;
+                    }
+                    let mut str_file_len = hstr.split_off(pos);
+                    str_file_len.truncate(str_file_len.len() - 2);
+                    let file_len_res = str_file_len.parse::<u64>();
+                    if file_len_res.is_ok() {
+                        let mut value = len.lock().unwrap();
+                        *value = file_len_res.unwrap();
+                    }
+                }
+            }
+
+            true
+        }).unwrap();
+        let res = curl.perform();
+        if res.is_err() {
+            log_error!("Unanle to get headers\n");
+            return Err(res.err().unwrap());
+        }
+        let value = rlen.lock().unwrap();
+        Ok(*value)
+    }
+
+    fn get_local_blocklist_length() -> Result<u64, std::io::Error> {
+        let res = File::open(BLOCKLIST_FILE_NAME);
+        if res.is_err() {
+            log_error!("Unable to open blocklist.txt\n");
+            return Err(res.err().unwrap());
+        }
+        let file = res.unwrap();
+        let metadata = file.metadata().unwrap();
+
+        Ok(metadata.len())
     }
 
     pub fn set_update_status(&mut self, status: FilterUpdateStatus) {
@@ -173,7 +173,7 @@ impl FilterConfig {
             log_error!("Invalid URL\n");
             return Err(res.err().unwrap());
         }
-        let res = get_remote_file_length(&mut curl);
+        let res = FilterConfig::get_remote_blocklist_length(&mut curl);
         if res.is_err() {
             log_error!("Unable to get remote file length\n");
             return Err(res.err().unwrap());
@@ -181,7 +181,7 @@ impl FilterConfig {
         let remote_size = res.unwrap();
         log_info!("Remote file length: {}\n", remote_size);
 
-        let res = get_local_file_length();
+        let res = FilterConfig::get_local_blocklist_length();
         if res.is_ok() {
             let local_size = res.unwrap();
             if local_size == remote_size {
