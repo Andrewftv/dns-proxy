@@ -56,22 +56,22 @@ impl LocalConfig {
     pub fn write_config(&self) -> bool {
 
         let mut data: String = "{\n".to_string();
-        data += "    \"listen_address\": ";
+        data += &("    \"".to_string() + LocalConfig::LISTEN_ADDR_NAME + "\": ");
         data += "\"";
         data += &self.bind_addr.ip().to_string();
         data += "\",\n";
 
-        data += "    \"listen_port\": ";
+        data += &("    \"".to_string() + LocalConfig::LISTEN_PORT_NAME +"\": ");
         data += "\"";
         data += &self.bind_addr.port().to_string();
         data += "\",\n";
 
-        data += "    \"DNS_server\": ";
+        data += &("    \"".to_string() + LocalConfig::DNS_SERVER_NAME + "\": ");
         data += "\"";
         data += &self.dns_srv_addr.ip().to_string();
         data += "\",\n";
 
-        data += "    \"use_DoH\": ";
+        data += &("    \"".to_string() + LocalConfig::USE_DOH_NAME + "\": ");
         data += "\"";
         data += if self.use_doh == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
         data += "\"\n"; 
