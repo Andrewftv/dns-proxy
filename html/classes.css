@@ -17,6 +17,7 @@ a.button {
     text-decoration: none;
     font-size: large;
     font-family: "Times New Roman", Times, serif;
+    cursor: pointer;
     }
 
 .container {

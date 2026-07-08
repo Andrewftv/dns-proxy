@@ -49,7 +49,8 @@ impl Statistics {
 pub enum FilterUpdateStatus {
     Unchanged,
     Updated,
-    Reloaded
+    Reloaded,
+    DownloadError
 }
 
 pub struct FilterConfig {
@@ -133,6 +134,10 @@ impl FilterConfig {
         return self.update_status == FilterUpdateStatus::Reloaded;
     }
 
+    pub fn is_error(&self) -> bool {
+        return self.update_status == FilterUpdateStatus::DownloadError;
+    }
+
     pub fn prepare_stat_data(&self) -> String {
         let mut ret_str: String;
         /* Table header */
@@ -165,18 +170,18 @@ impl FilterConfig {
         return self.ads_provider_list.len();
     }
 
-    pub fn check_update() -> Result<FilterUpdateStatus, curl::Error> {
+    pub fn check_update() -> FilterUpdateStatus {
         // Get remote file length
         let mut curl = Easy::new();
         let res = curl.url(FilterConfig::URL_BLOCKLIST);
         if res.is_err() {
             log_error!("Invalid URL\n");
-            return Err(res.err().unwrap());
+            return FilterUpdateStatus::DownloadError;
         }
         let res = FilterConfig::get_remote_blocklist_length(&mut curl);
         if res.is_err() {
             log_error!("Unable to get remote file length\n");
-            return Err(res.err().unwrap());
+            return FilterUpdateStatus::DownloadError;
         }
         let remote_size = res.unwrap();
         log_info!("Remote file length: {}\n", remote_size);
@@ -186,7 +191,7 @@ impl FilterConfig {
             let local_size = res.unwrap();
             if local_size == remote_size {
                 log_info!("Remote file unchanged\n");
-                return Ok(FilterUpdateStatus::Unchanged);
+                return FilterUpdateStatus::Unchanged;
             }
         }
         // Get content
@@ -197,7 +202,7 @@ impl FilterConfig {
             #[cfg(target_os = "windows")]
             return Err(curl::Error::new(file.err().unwrap().kind() as i32));
             #[cfg(target_os = "linux")]
-            return Err(curl::Error::new(file.err().unwrap().kind() as u32));
+            return FilterUpdateStatus::DownloadError;
         }
 
         curl.write_function(move |data| {
@@ -208,10 +213,10 @@ impl FilterConfig {
         let res = curl.perform();
         if res.is_err() {
             log_error!("Unanle to get content\n");
-            return Err(res.err().unwrap());
+            return FilterUpdateStatus::DownloadError;
         }
 
-        return Ok(FilterUpdateStatus::Updated);
+        return FilterUpdateStatus::Updated;
     }
 
     pub fn set_enable(&mut self, key : &String) -> bool {

@@ -178,6 +178,8 @@ impl UiServer {
                     status_str = "<strong>Filter was updated</strong>";
                 } else if filter.is_reloaded() {
                     status_str = "<strong>Filter was reloaded</strong>"
+                } else if filter.is_error() {
+                    status_str = "<strong style=\"color:red;\">Download error</strong>"
                 }
                 filter.set_update_status(FilterUpdateStatus::Unchanged);
                 drop(filter);
@@ -468,8 +470,8 @@ impl UiServer {
     pub fn start_gui_server(&mut self, mfilter: &Arc<Mutex<FilterConfig>>, mcfg: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         // DNS server already srarted. Check blocklist.txt for update
         self.last_filter_update_check = SystemTime::now();
-        let res = FilterConfig::check_update();
-        if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
+        let status = FilterConfig::check_update();
+        if status == FilterUpdateStatus::Updated {
             let mut filter = mfilter.lock().unwrap();
             let _ = filter.reload_filter();
             drop(filter);
@@ -500,8 +502,8 @@ impl UiServer {
                     if durution.as_secs() >= Duration::from_hours(24).as_secs() {
                         log_info!("Check filter update\n");
                         self.last_filter_update_check = SystemTime::now();
-                        let res = FilterConfig::check_update();
-                        if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
+                        let status = FilterConfig::check_update();
+                        if status == FilterUpdateStatus::Updated {
                             let mut filter = mfilter.lock().unwrap();
                             let _ = filter.reload_filter();
                             drop(filter);
@@ -613,13 +615,15 @@ impl UiServer {
                 }
                 "POST /update_filter HTTP/1.1" => {
                     self.last_filter_update_check = SystemTime::now();
-                    let res = FilterConfig::check_update();
-                    if res.is_ok() && res.unwrap() == FilterUpdateStatus::Updated {
-                        let mut filter = mfilter.lock().unwrap();
+                    let status = FilterConfig::check_update();
+                    let mut filter = mfilter.lock().unwrap();
+                    if status == FilterUpdateStatus::Updated {
                         let _ = filter.reload_filter();
-                        filter.set_update_status(FilterUpdateStatus::Updated);
-                        drop(filter);
+                        filter.set_update_status(status);
+                    } else if status == FilterUpdateStatus::DownloadError {
+                        filter.set_update_status(status);
                     }
+                    drop(filter);
                     self.show_popup = true;
                     self.set_status_code("HTTP/1.1 301 Redirect");
                     self.set_response_hdr("Cache-Control: no-cache");
