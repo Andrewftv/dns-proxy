@@ -11,6 +11,8 @@ use crate::{log_error, log_debug, log_info};
 use crate::filter::{FilterConfig, FilterUpdateStatus};
 use crate::config::LocalConfig;
 
+use crate::filter::BLOCKLIST_FILE_NAME;
+
 struct PostParams {
     name: String,
     value: String
@@ -48,6 +50,10 @@ impl UiServer {
     const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
     const TAG_UPDATE_CHECK: &str = "{#UPDATE_CHECK}";
     const TAG_HIDE_POPUP: &str = "{#HIDE_POPUP}";
+    const MSG_FILTER_UP_TO_DATE: &str = "<strong>Filter is up to date</strong>";
+    const MSG_FILTER_UPDATED: &str = "<strong>Filter was updated</strong>";
+    const MSG_FILTER_RELOADED: &str = "<strong>Filter was reloaded</strong>";
+    const MSG_FILTER_ERROR: &str = "<strong style=\"color:red;\">Download error</strong>";
 
     pub fn new() -> UiServer {
         UiServer
@@ -88,16 +94,15 @@ impl UiServer {
                 let use_doh = srv_cfg.get_use_doh();
                 let dns_srv_addr = srv_cfg.get_dns_srv_addr();
                 
-                let addr_port_str = if use_doh {
+                if use_doh {
                     dns_srv_addr.ip().to_string() + ":DoH"
                 } else {
-                    dns_srv_addr.to_string()    
-                };
-                addr_port_str
+                    dns_srv_addr.to_string()
+                }
             }
             UiServer::TAG_LAST_FILTER_UPDATE => {
                 let mut update_str: String = Default::default();
-                let res = std::fs::metadata("blocklist.txt");
+                let res = std::fs::metadata(BLOCKLIST_FILE_NAME);
                 if res.is_ok() {
                     let metadata = res.unwrap();
                     let res = metadata.modified();
@@ -111,17 +116,15 @@ impl UiServer {
             }
             UiServer::TAG_UPDATE_CHECK => {
                 let datetime: DateTime<Local> = self.last_filter_update_check.into();
-                let check_str = datetime.format("%Y/%m/%d %T").to_string();
-                check_str
+                datetime.format("%Y/%m/%d %T").to_string()
             }
             UiServer::TAG_DNS_TYPE => {
                 let use_doh = srv_cfg.get_use_doh();
-                let use_doh_str = if use_doh {
+                if use_doh {
                     "checked".to_string()
                 } else {
                     "unchecked".to_string()
-                };
-                use_doh_str
+                }
             }
             UiServer::TAG_REJECTED_NAMES => {
                 let filter = mfilter.lock().unwrap();
@@ -130,8 +133,7 @@ impl UiServer {
                 stat_str
             }
             UiServer::TAG_VERSION => {
-                let ver_str: String = "1.1".to_string();
-                ver_str
+                LocalConfig::get_version_string()
             }
             UiServer::TAG_UPTIME => {
                 let total_secs = self.get_uptime_sec();
@@ -139,9 +141,7 @@ impl UiServer {
                 let minutes = (total_secs % 3600) / 60;
                 let hours = (total_secs % 86400) / 3600;
                 let days = total_secs / 86400;
-                let uptime_str = format!("{} days {:02}:{:02}:{:02}", days, hours, minutes, seconds);
-
-                uptime_str
+                format!("{} days {:02}:{:02}:{:02}", days, hours, minutes, seconds)
             }
             UiServer::TAG_TPOOL_STAT => {
                 let mut stat_table: String = Default::default();
@@ -173,13 +173,13 @@ impl UiServer {
             }
             UiServer::TAG_FILTER_STATUS => {
                 let mut filter = mfilter.lock().unwrap();
-                let mut status_str = "<strong>Filter is up to date</strong>";
+                let mut status_str = UiServer::MSG_FILTER_UP_TO_DATE;
                 if filter.is_updated() {
-                    status_str = "<strong>Filter was updated</strong>";
+                    status_str = UiServer::MSG_FILTER_UPDATED;
                 } else if filter.is_reloaded() {
-                    status_str = "<strong>Filter was reloaded</strong>"
+                    status_str = UiServer::MSG_FILTER_RELOADED;
                 } else if filter.is_error() {
-                    status_str = "<strong style=\"color:red;\">Download error</strong>"
+                    status_str = UiServer::MSG_FILTER_ERROR;
                 }
                 filter.set_update_status(FilterUpdateStatus::Unchanged);
                 drop(filter);

@@ -14,6 +14,7 @@ pub struct LocalConfig {
 }
 
 impl LocalConfig {
+    const PRODUCT_VERSION: &str = "1.2";
     const CFG_FILE_NAME: &str = "config.json";
     const LISTEN_ADDR_NAME: &str = "listen_address";
     const LISTEN_PORT_NAME: &str = "listen_port";
@@ -35,6 +36,10 @@ impl LocalConfig {
             use_doh: true,
             tpool_stat
         }
+    }
+
+    pub fn get_version_string() -> String {
+        return LocalConfig::PRODUCT_VERSION.to_string();
     }
 
     pub fn set_tpool_stat(&mut self, stat: &TPoolStat) {

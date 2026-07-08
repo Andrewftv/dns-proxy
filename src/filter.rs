@@ -10,7 +10,7 @@ use std::io::Write;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
 
-const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
+pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
 
 #[derive(Clone, PartialEq)]
