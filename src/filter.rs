@@ -199,9 +199,6 @@ impl FilterConfig {
         let mut file = File::create(BLOCKLIST_FILE_NAME);
         if file.is_err() {
             log_error!("Unable to create file\n");
-            #[cfg(target_os = "windows")]
-            return Err(curl::Error::new(file.err().unwrap().kind() as i32));
-            #[cfg(target_os = "linux")]
             return FilterUpdateStatus::DownloadError;
         }
 
