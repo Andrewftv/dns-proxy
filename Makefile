@@ -11,8 +11,8 @@ aarch64:
 	@$(CARGO) build --release --target=aarch64-unknown-linux-musl
 	@echo "[*** Delete previsional image]"
 	@$(DOCKER) rmi -f $(IMAGE_NAME):$@
-#	@echo "[*** Run AARCH64 emulator]"
-#	@$(DOCKER) run --privileged --rm tonistiigi/binfmt --install arm64
+	@echo "[*** Run AARCH64 emulator]"
+	@$(DOCKER) run --privileged --rm tonistiigi/binfmt --install arm64
 	@echo "[*** Create docker image]"
 	@$(DOCKER) build -f Dockerfile.$@ --no-cache --platform linux/arm64 -t $(IMAGE_NAME):$@ .
 	@echo "[*** Create export tar]"
@@ -24,6 +24,8 @@ arm_v7:
 	@$(CARGO) build --release --target=armv7-unknown-linux-musleabihf
 	@echo "[*** Delete previsional image]"
 	@$(DOCKER) rmi -f $(IMAGE_NAME):$@
+	@echo "[*** Run ARM emulator]"
+	@$(DOCKER) run --privileged --rm tonistiigi/binfmt --install arm
 	@echo "[*** Create docker image]"
 	@$(DOCKER) build -f Dockerfile.$@ --no-cache --platform linux/arm/v7 -t $(IMAGE_NAME):$@ .
 	@echo "[*** Create export tar]"

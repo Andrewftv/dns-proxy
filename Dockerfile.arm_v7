@@ -1,5 +1,7 @@
 FROM alpine
 
+RUN apk add --no-cache tzdata
+
 WORKDIR /usr/dns-adblock/
 # Executable
 COPY ./target/armv7-unknown-linux-musleabihf/release/dns-proxy /usr/dns-adblock/dns-proxy

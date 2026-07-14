@@ -49,8 +49,8 @@ docker run --rm -p 53:53/udp -p 8080:8080 dns-proxy:aarch64
 ```
 Run as deamon
 ```
-docker run -d --restart=unless-stopped -p 53:53/udp -p 8080:8080 dns-proxy:arm_v7
+docker run -d -e TZ=<your_time_zome> --restart=unless-stopped -p 53:53/udp -p 8080:8080 dns-proxy:arm_v7
 ```
 ```
-docker run -d --restart=unless-stopped -p 53:53/udp -p 8080:8080 dns-proxy:aarch64
+docker run -d -e TZ=<your_time_zome> --restart=unless-stopped -p 53:53/udp -p 8080:8080 dns-proxy:aarch64
 ```
