@@ -276,7 +276,7 @@ impl FilterConfig {
                 if single_line.is_empty() {
                     continue;
                 }
-                if single_line.len() > 2 && single_line.chars().nth(0).unwrap() != '|' && 
+                if single_line.len() > 2 && single_line.chars().nth(0).unwrap() != '|' || 
                     single_line.chars().nth(1).unwrap() != '|' {
                     continue;
                 } 
@@ -307,6 +307,7 @@ impl FilterConfig {
                 }
                 // TODO: Use wildcard
                 if single_line.find('*').is_some() {
+                    log_debug!("Wild card found: {}\n", single_line);
                     continue;
                 }
 
@@ -315,7 +316,10 @@ impl FilterConfig {
                 } else {
                     FilterType::Local
                 };
-
+                if single_line.is_empty() {
+                    log_info!("Empty string\n");
+                    continue;
+                }
                 if self.ads_provider_list.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
                     log_info!("Dublicated key {}\n", single_line);
                 } else {

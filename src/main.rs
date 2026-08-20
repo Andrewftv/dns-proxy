@@ -118,6 +118,11 @@ impl DnsProxy {
             }
         }
 
+        let opt = ask_name.find("www.");
+        if opt.is_some() && opt.unwrap() == 0 {
+            ask_name = ask_name.chars().skip(4).collect();   
+        }
+
         return ask_name;
     }
 

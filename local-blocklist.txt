@@ -1,6 +1,5 @@
 ||csync-global.smartadserver.com^
 ||kraken.rambler.ru^
-||partners.walla.co.il^$badfilter
 ||data.24smi.net^
 ||ads.adfox.ru^
 ||ads.mignews.com^
@@ -10,7 +9,7 @@
 ||api.sppopups.com^
 ||cdn.unblockia.com^
 ||stat.media^
-||www.idealmedia.io^
+||idealmedia.io^
 ||cm.idealmedia.io^
 ||cdn.idealmedia.io^
 ||idealmedia.io^
@@ -25,3 +24,8 @@
 ||api.phoenix-widget.com^
 ||phoenix-widget.com^
 ||track.phoenix-widget.com^
+||top-fwz1.mail.ru^
+||googleads.g.doubleclick.net^
+||securepubads.g.doubleclick.net^
+||player.avplayer.com^
+||mv.outbrain.com^
