@@ -12,11 +12,13 @@ use std::sync::{Arc, Mutex};
 
 pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
+pub const LOCAL_WHITELIST_FILE_NAME: &str = "local-whitelist.txt";
 
 #[derive(Clone, PartialEq)]
 pub enum FilterType {
     Global,
-    Local
+    Local,
+    None
 }
 
 #[derive(Clone)]
@@ -63,6 +65,7 @@ impl FilterConfig {
     const REMOVE_PARAM_TAG: &str = "$removeparam";
     const BAD_PARAM_TAG: &str = "$badfilter";
     const THIRD_PARTY_TAG: &str = "$third-party";
+    const DOMAIN_TAG: &str = "$domain";
 
     pub fn new() -> FilterConfig {
         log_info!("Create new filter\n");
@@ -255,7 +258,7 @@ impl FilterConfig {
     }
 
     pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {
-        let filter_files: Vec<&str> = Vec::from([BLOCKLIST_FILE_NAME, LOCAL_BLOCKLIST_FILE_NAME]);
+        let filter_files: Vec<&str> = Vec::from([BLOCKLIST_FILE_NAME, LOCAL_BLOCKLIST_FILE_NAME, LOCAL_WHITELIST_FILE_NAME]);
 
         for index in 0..filter_files.capacity() {
             log_info!("Parse {} block list\n", filter_files[index]);
@@ -300,7 +303,14 @@ impl FilterConfig {
                 if second_part.contains(FilterConfig::THIRD_PARTY_TAG) {
                     continue;
                 }
+                if second_part.contains(FilterConfig::DOMAIN_TAG) {
+                    continue;
+                }
                 single_line.truncate(pos);
+                if single_line.is_empty() {
+                    log_info!("Empty string\n");
+                    continue;
+                }
                 // Skip invalid DNS name
                 if single_line.find('/').is_some() {
                     continue;
@@ -308,22 +318,32 @@ impl FilterConfig {
                 // TODO: Use wildcard
                 if single_line.find('*').is_some() {
                     log_debug!("Wild card found: {}\n", single_line);
+                    //self.parse_wildcard(&single_line);
                     continue;
                 }
 
-                let ftype = if index == 0 {
-                    FilterType::Global
-                } else {
-                    FilterType::Local
+                let ftype = match index {
+                    0 => FilterType::Global,
+                    1 => FilterType::Local,
+                    _ => FilterType::None
                 };
-                if single_line.is_empty() {
-                    log_info!("Empty string\n");
-                    continue;
-                }
-                if self.ads_provider_list.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
-                    log_info!("Dublicated key {}\n", single_line);
+                if ftype == FilterType::Global || ftype == FilterType::Local {
+                    if self.ads_provider_list.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
+                        log_info!("Dublicated key {}\n", single_line);
+                    } else {
+                        total_lines += 1;
+                    }
                 } else {
-                    total_lines += 1;
+                    // White list
+                    log_debug!("White list entry: {}\n", single_line);
+                    let opt = self.ads_provider_list.get_mut(&single_line);
+                    if opt.is_none() {
+                        log_debug!("Entry not found\n");
+                        continue;
+                    }
+                    let stat = opt.unwrap();
+                    stat.set_enable(true);
+                    stat.inc_request_count();
                 }
             }
 

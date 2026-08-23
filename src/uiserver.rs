@@ -6,12 +6,13 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Local};
+use std::fs;
 
 use crate::{log_error, log_debug, log_info};
 use crate::filter::{FilterConfig, FilterUpdateStatus};
 use crate::config::LocalConfig;
 
-use crate::filter::BLOCKLIST_FILE_NAME;
+use crate::filter::{BLOCKLIST_FILE_NAME, LOCAL_WHITELIST_FILE_NAME};
 
 struct PostParams {
     name: String,
@@ -429,18 +430,30 @@ impl UiServer {
         filter.clear_enable();
         drop(filter);
 
+        let whitelist: String = String::default();
+        let res = fs::write(LOCAL_WHITELIST_FILE_NAME, whitelist);
+        if res.is_err() {
+            log_error!("Error clean local white list\n");
+        }
+
         return true;
     }
 
     fn set_names_enable(params: &Vec<PostParams>, mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
         let mut filter = mfilter.lock().unwrap();
         filter.clear_enable();
+        let mut whitelist: String = String::default();
         for param in params.iter() {
             log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
-
+            let tmp_str = format!("||{}^\n", param.name);
+            whitelist += &tmp_str;
             filter.set_enable(&param.name);
         }
         drop(filter);
+        let res = fs::write(LOCAL_WHITELIST_FILE_NAME, whitelist);
+        if res.is_err() {
+            log_error!("Error write local white list\n");
+        }
 
         return true;
     }
