@@ -7,7 +7,7 @@ WORKDIR /usr/dns-adblock/
 COPY ./target/armv7-unknown-linux-musleabihf/release/dns-proxy /usr/dns-adblock/dns-proxy
 # Local block list
 COPY ./local-blocklist.txt /usr/dns-adblock/local-blocklist.txt
-COPY ./local-blocklist.txt /usr/dns-adblock/local-whitelist.txt
+COPY ./local-whitelist.txt /usr/dns-adblock/local-whitelist.txt
 # Config file
 COPY ./config.json /usr/dns-adblock/config.json
 # html files
