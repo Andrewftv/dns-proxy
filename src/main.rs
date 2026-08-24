@@ -9,12 +9,11 @@ use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread::{self, JoinHandle
 use utils::print_dump;
 use filter::FilterConfig;
 use tpool::ThreadPool;
-use std::sync::Mutex;
-use std::sync::Arc;
-use std::sync::mpsc;
+use std::sync::{Mutex, Arc, mpsc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use curl::easy::{Easy, List};
 use std::io::Read;
+use std::env;
 use uiserver::UiServer;
 use config::LocalConfig;
 
@@ -287,6 +286,7 @@ fn wait_threads(proxy_thread: &JoinHandle<()>, proxy_run: &Arc<AtomicBool>, ui_t
 
 fn main() -> Result<(), std::io::Error>
 {
+    let args: Vec<String> = env::args().collect();
     let (tx_proxy, rx_proxy) = mpsc::channel();
     let (tx_ui, rx_ui) = mpsc::channel();
     let dns_proxy_server = DnsProxy::new();
@@ -294,6 +294,22 @@ fn main() -> Result<(), std::io::Error>
     let mut filter: FilterConfig = FilterConfig::new();
     let mut srv_config: LocalConfig = LocalConfig::new();
     srv_config.read_config();
+    // Force set listen port. Need for debug environment
+    if args.len() >= 3 {
+        for i in 1..args.len() {
+            if args[i] == "--port" {
+                if i + 1 < args.len() {
+                    let res = args[i + 1].parse::<u16>();
+                    if res.is_ok() {
+                        let port_no: u16 = res.unwrap();
+                        log_info!("Set DNS port from command line parameter: {}\n", port_no);
+                        srv_config.set_bind_port(port_no);
+                    }
+                    break;
+                }
+            }
+        }
+    }
 
     let cfg_result = filter.create_black_list_map();
     if cfg_result.is_err() {

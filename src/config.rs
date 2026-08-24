@@ -197,6 +197,10 @@ impl LocalConfig {
         return true;
     }
 
+    pub fn set_bind_port(&mut self, port: u16) {
+        self.bind_addr.set_port(port);
+    }
+
     pub fn get_bind_addr(&self) -> std::net::SocketAddr {
         return self.bind_addr;
     }
