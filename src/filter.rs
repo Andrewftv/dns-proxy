@@ -14,8 +14,8 @@ pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
 pub const LOCAL_WHITELIST_FILE_NAME: &str = "local-whitelist.txt";
 
-#[derive(Clone, PartialEq)]
-pub enum FilterType {
+#[derive(Clone, PartialEq, Copy)]
+enum FilterType {
     Global,
     Local,
     None
@@ -25,7 +25,6 @@ pub enum FilterType {
 struct Statistics {
     requests : u64,
     enable : bool,
-    #[allow(dead_code)]
     filter_type: FilterType,
 }
 
@@ -42,8 +41,8 @@ impl Statistics {
         return self.requests;
     }
     #[allow(dead_code)]
-    pub fn get_filter_type(&self) -> &FilterType {
-        return &self.filter_type;
+    pub fn get_filter_type(&self) -> FilterType {
+        return self.filter_type;
     }
 }
 
@@ -144,7 +143,7 @@ impl FilterConfig {
     pub fn prepare_stat_data(&self) -> String {
         let mut ret_str: String;
         /* Table header */
-        ret_str = "<tr>\n<th>Enable</th>\n<th>Name</th>\n<th>Count</th></tr>\n".to_string();
+        ret_str = "<tr>\n<th>Enable</th>\n<th>Filter</th>\n<th>Name</th>\n<th>Count</th></tr>\n".to_string();
         /* Table contant */
         for (key, value) in self.ads_provider_list.iter() {
             if value.requests > 0 {
@@ -159,6 +158,14 @@ impl FilterConfig {
                 }
                 ret_str += "></td>\n";
                 ret_str += "<td>\n";
+                ret_str += if value.get_filter_type() == FilterType::Global {
+                    "Global"
+                } else if value.get_filter_type() == FilterType::Local {
+                    "Local"
+                } else {
+                    ""
+                };
+                ret_str += "</td>\n<td>";
                 ret_str += key;
                 ret_str += "</td>\n<td>";
                 ret_str += &value.requests.to_string();
@@ -318,7 +325,6 @@ impl FilterConfig {
                 // TODO: Use wildcard
                 if single_line.find('*').is_some() {
                     log_debug!("Wild card found: {}\n", single_line);
-                    //self.parse_wildcard(&single_line);
                     continue;
                 }
 
