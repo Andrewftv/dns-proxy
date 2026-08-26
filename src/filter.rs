@@ -56,6 +56,7 @@ pub enum FilterUpdateStatus {
 
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
+    ads_provider_wildcard: BTreeMap<String, Statistics>,
     update_status: FilterUpdateStatus
 }
 
@@ -71,6 +72,7 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
+            ads_provider_wildcard: BTreeMap::new(),
             update_status: FilterUpdateStatus::Unchanged
         }
     }
@@ -142,37 +144,44 @@ impl FilterConfig {
 
     pub fn prepare_stat_data(&self) -> String {
         let mut ret_str: String;
+        let mut ads_prov: Vec<&BTreeMap<String, Statistics>> = vec![];
+        ads_prov.push(&self.ads_provider_list);
+        ads_prov.push(&self.ads_provider_wildcard);
         /* Table header */
         ret_str = "<tr>\n<th>Enable</th>\n<th>Filter</th>\n<th>Name</th>\n<th>Count</th></tr>\n".to_string();
         /* Table contant */
-        for (key, value) in self.ads_provider_list.iter() {
-            if value.requests > 0 {
-                ret_str += "<tr>\n";
-                ret_str += "<td><input type=\"checkbox\" name=\"";
-                ret_str += key;
-                ret_str += "\" ";
-                if value.enable {
-                    ret_str += "checked";
-                } else {
-                    ret_str += "unchecked";
+        for i in 0..ads_prov.len() {
+            let prov = ads_prov[i];
+            for (key, value) in prov.iter() {
+                if value.requests > 0 {
+                    ret_str += "<tr>\n";
+                    ret_str += "<td><input type=\"checkbox\" name=\"";
+                    ret_str += key;
+                    ret_str += "\" ";
+                    if value.enable {
+                        ret_str += "checked";
+                    } else {
+                        ret_str += "unchecked";
+                    }
+                    ret_str += "></td>\n";
+                    ret_str += "<td>\n";
+                    ret_str += if value.get_filter_type() == FilterType::Global {
+                        "Global"
+                    } else if value.get_filter_type() == FilterType::Local {
+                        "Local"
+                    } else {
+                        ""
+                    };
+                    ret_str += "</td>\n<td>";
+                    ret_str += key;
+                    ret_str += "</td>\n<td>";
+                    ret_str += &value.requests.to_string();
+                    ret_str += "</td>\n";
+                    ret_str += "</tr>\n";
                 }
-                ret_str += "></td>\n";
-                ret_str += "<td>\n";
-                ret_str += if value.get_filter_type() == FilterType::Global {
-                    "Global"
-                } else if value.get_filter_type() == FilterType::Local {
-                    "Local"
-                } else {
-                    ""
-                };
-                ret_str += "</td>\n<td>";
-                ret_str += key;
-                ret_str += "</td>\n<td>";
-                ret_str += &value.requests.to_string();
-                ret_str += "</td>\n";
-                ret_str += "</tr>\n";
             }
         }
+        
         return ret_str;
     }
 
@@ -244,10 +253,60 @@ impl FilterConfig {
         }
     }
 
+    pub fn search_wildcard(&mut self, name: &String) -> (bool, u64) {
+        for (key, stat) in self.ads_provider_wildcard.iter_mut() {
+            let parts: Vec<&str> = key.split('*').collect();
+            let first_star: bool = if key.chars().nth(0).unwrap() == '*' {true} else {false};
+            let mut index: usize = 0;
+            let mut found: bool = true;
+            for i in 0..parts.len() {
+                if i == 0 {
+                    if first_star {
+                        let opt = name.find(parts[0]);
+                        if opt.is_none() {
+                            found = false;
+                            break;
+                        }
+                        index = opt.unwrap() + parts[0].len();
+                    } else {
+                        if !name.starts_with(parts[0]) {
+                            found = false;
+                            break;
+                        }
+                        index = parts[0].len();
+                    }
+                } else {
+                    if parts[i].len() == 0 {
+                        continue;
+                    }
+                    let opt = name[index..].find(parts[i]);
+                    if opt.is_none() {
+                        found = false;
+                        break;
+                    }
+                    index += opt.unwrap() + parts[i].len();
+                }
+            }
+            if !found {
+                continue;
+            }
+            if index == name.len() || key.chars().nth(key.len() - 1).unwrap() == '*' {
+                if stat.enable {
+                    return (false, 0);            
+                }
+                log_debug!("FOUND: wildcard: {} name: {}\n", key, name);
+                let reject_count = stat.inc_request_count();
+                return (true, reject_count);
+            }
+        }
+
+        return (false, 0);
+    }
+
     pub fn search(&mut self, key : &String) -> (bool, u64) {
         let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
-            return (false, 0);
+            return self.search_wildcard(key)
         }
         let stat  = stat_opt.unwrap();
         if stat.enable {
@@ -260,6 +319,7 @@ impl FilterConfig {
 
     pub fn reload_filter(&mut self) -> Result<(), std::io::Error> {
         self.ads_provider_list.clear();
+        self.ads_provider_wildcard.clear();
 
         return self.create_black_list_map();
     }
@@ -322,17 +382,24 @@ impl FilterConfig {
                 if single_line.find('/').is_some() {
                     continue;
                 }
-                // TODO: Use wildcard
-                if single_line.find('*').is_some() {
-                    log_debug!("Wild card found: {}\n", single_line);
-                    continue;
-                }
-
                 let ftype = match index {
                     0 => FilterType::Global,
                     1 => FilterType::Local,
                     _ => FilterType::None
                 };
+                // TODO: Use wildcard
+                if single_line.find('*').is_some() {
+                    //log_debug!("Wild card found: {}\n", single_line);
+                    if single_line.contains("[") {
+                        continue;
+                    }
+                    log_debug!("Add wildcard: {}\n", single_line);
+                    if self.ads_provider_wildcard.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
+                        log_info!("Dublicated wildcard {}\n", single_line);
+                    }
+                    continue;
+                }
+
                 if ftype == FilterType::Global || ftype == FilterType::Local {
                     if self.ads_provider_list.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
                         log_info!("Dublicated key {}\n", single_line);
