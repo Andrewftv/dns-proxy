@@ -393,7 +393,6 @@ impl FilterConfig {
                     1 => FilterType::Local,
                     _ => FilterType::None
                 };
-                // TODO: Use wildcard
                 if single_line.find('*').is_some() && index != 2 {
                     //log_debug!("Wild card found: {}\n", single_line);
                     if single_line.contains("[") {
