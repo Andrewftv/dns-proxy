@@ -186,7 +186,7 @@ impl FilterConfig {
     }
 
     pub fn get_num_entries(&self) -> usize {
-        return self.ads_provider_list.len();
+            return self.ads_provider_list.len() + self.ads_provider_wildcard.len();
     }
 
     pub fn check_update() -> FilterUpdateStatus {
@@ -237,9 +237,12 @@ impl FilterConfig {
 
     pub fn set_enable(&mut self, key : &String) -> bool {
         log_debug!("Key: '{}'\n", key);
-        let stat_opt = self.ads_provider_list.get_mut(key);
+        let mut stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
-            return false;
+            stat_opt = self.ads_provider_wildcard.get_mut(key);
+            if stat_opt.is_none() {
+                return false;
+            }
         }
         let stat  = stat_opt.unwrap();
         stat.set_enable(true);
@@ -249,6 +252,9 @@ impl FilterConfig {
 
     pub fn clear_enable(&mut self) {
         for (_key, value) in self.ads_provider_list.iter_mut() {
+            value.set_enable(false);
+        }
+        for (_key, value) in self.ads_provider_wildcard.iter_mut() {
             value.set_enable(false);
         }
     }
@@ -388,7 +394,7 @@ impl FilterConfig {
                     _ => FilterType::None
                 };
                 // TODO: Use wildcard
-                if single_line.find('*').is_some() {
+                if single_line.find('*').is_some() && index != 2 {
                     //log_debug!("Wild card found: {}\n", single_line);
                     if single_line.contains("[") {
                         continue;
@@ -409,10 +415,13 @@ impl FilterConfig {
                 } else {
                     // White list
                     log_debug!("White list entry: {}\n", single_line);
-                    let opt = self.ads_provider_list.get_mut(&single_line);
+                    let mut opt = self.ads_provider_list.get_mut(&single_line);
                     if opt.is_none() {
-                        log_debug!("Entry not found\n");
-                        continue;
+                        opt = self.ads_provider_wildcard.get_mut(&single_line);
+                        if opt.is_none() {
+                            log_debug!("Entry not found\n");
+                            continue;
+                        }
                     }
                     let stat = opt.unwrap();
                     stat.set_enable(true);
