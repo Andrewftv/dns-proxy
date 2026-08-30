@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, env};
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use crate::{log_error, log_debug, log_info};
@@ -24,9 +24,6 @@ impl LocalConfig {
     const NO_VALUE: &str = "no";
 
     pub fn new() -> LocalConfig {
-        /* Default config */
-        let tpool_stat =  TPoolStat::new(4);
-
         LocalConfig
         {
             bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
@@ -34,8 +31,27 @@ impl LocalConfig {
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
             use_doh: true,
-            tpool_stat
+            tpool_stat: TPoolStat::new(4)
         }
+    }
+
+    pub fn parse_cmd_params(&mut self) {
+        let args: Vec<String> = env::args().collect();
+        if args.len() >= 3 {
+        for i in 1..args.len() {
+            if args[i] == "--port" {
+                if i + 1 < args.len() {
+                    let res = args[i + 1].parse::<u16>();
+                    if res.is_ok() {
+                        let port_no: u16 = res.unwrap();
+                        log_info!("Set DNS port from command line parameter: {}\n", port_no);
+                        self.set_bind_port(port_no);
+                    }
+                    break;
+                }
+            }
+        }
+    }
     }
 
     pub fn get_version_string() -> String {
