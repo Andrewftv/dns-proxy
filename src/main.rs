@@ -3,7 +3,7 @@ mod filter;
 mod tpool;
 mod uiserver;
 mod config;
-//mod activity;
+mod activity;
 
 use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread::{self, JoinHandle}, time::Duration};
 #[allow(unused_imports)]
@@ -16,7 +16,6 @@ use curl::easy::{Easy, List};
 use std::io::Read;
 use uiserver::UiServer;
 use config::LocalConfig;
-//use activity::DNSActyvityMonitor;
 
 struct DnsProxy {
     pub running: Arc<AtomicBool>,
@@ -127,21 +126,22 @@ impl DnsProxy {
     }
 
     fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : std::net::SocketAddr, 
-        shared_filter : &Arc<Mutex<FilterConfig>>, shared_curl: &Arc<Mutex<Easy>>, shared_cfg: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
+        filter_ref : &Arc<Mutex<FilterConfig>>, curl_ref: &Arc<Mutex<Easy>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
+
         let asked_name = DnsProxy::get_asked_string(dns_req_pack);
-        let cfg = shared_cfg.lock().unwrap();
+        let cfg = cfg_ref.lock().unwrap();
         let dns_srv_addr = cfg.get_dns_srv_addr();
         let use_doh = cfg.get_use_doh();
         drop(cfg);
-        let mut filter_config = shared_filter.lock().unwrap();
+        let mut flt = filter_ref.lock().unwrap();
         let dns_response : Vec<u8>;
-        let (is_found, reject_count) = filter_config.search(&asked_name);
+        let (is_found, reject_count) = flt.search(&asked_name);
         let mut log_string: String = Default::default();
         if !is_found || reject_count == 1 {
             //log_info!("Ask for: {}", asked_name);
             log_string = format!("Ask for: {}", asked_name);
         }
-        drop(filter_config);
+        drop(flt);
         if is_found {
             let mut reject_buff : [u8; 12] = [0; 12];
             // Copy ID field
@@ -159,7 +159,7 @@ impl DnsProxy {
         } else {
             let lookup_result: Result<Vec<u8>, Error>;
             if use_doh {
-                lookup_result = DnsProxy::lookup_https(dns_srv_addr, dns_req_pack, shared_curl);
+                lookup_result = DnsProxy::lookup_https(dns_srv_addr, dns_req_pack, curl_ref);
             } else {
                 lookup_result = DnsProxy::lookup(dns_srv_addr, dns_req_pack);
             }
@@ -176,7 +176,9 @@ impl DnsProxy {
             log_info!(&log_string);
         }
 
-        //DNSActyvityMonitor::add_requested_name(&asked_name, &ip_addr);
+        let flt = filter_ref.lock().unwrap();
+        flt.add_requested_name(&asked_name, &ip_addr);
+        drop(flt);
 
         let send_result = socket.send_to(&dns_response, ip_addr);
         if send_result.is_err() {

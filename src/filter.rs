@@ -2,6 +2,7 @@ use std::io;
 use std::io::{BufRead, Error, ErrorKind};
 use std::collections::BTreeMap;
 use std::str;
+use std::net::SocketAddr;
 use crate::log_info;
 use crate::log_debug;
 use crate::log_error;
@@ -9,6 +10,7 @@ use curl::easy::Easy;
 use std::io::Write;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
+use crate::activity::DNSActyvityMonitor;
 
 pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
@@ -57,7 +59,8 @@ pub enum FilterUpdateStatus {
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
     ads_provider_wildcard: BTreeMap<String, Statistics>,
-    update_status: FilterUpdateStatus
+    update_status: FilterUpdateStatus,
+    activity: DNSActyvityMonitor
 }
 
 impl FilterConfig {
@@ -73,8 +76,13 @@ impl FilterConfig {
         {
             ads_provider_list: BTreeMap::new(),
             ads_provider_wildcard: BTreeMap::new(),
-            update_status: FilterUpdateStatus::Unchanged
+            update_status: FilterUpdateStatus::Unchanged,
+            activity: DNSActyvityMonitor::new()
         }
+    }
+
+    pub fn add_requested_name(&self, name: &String, ip_addr: &SocketAddr) {
+        self.activity.add_requested_name(name, ip_addr);
     }
 
     fn get_remote_blocklist_length(curl: &mut Easy) -> Result<u64, curl::Error> {
