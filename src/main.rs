@@ -3,7 +3,6 @@ mod filter;
 mod tpool;
 mod uiserver;
 mod config;
-//mod activity;
 
 use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread::{self, JoinHandle}, time::Duration};
 #[allow(unused_imports)]
@@ -14,9 +13,9 @@ use std::sync::{Mutex, Arc, mpsc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use curl::easy::{Easy, List};
 use std::io::Read;
+use std::env;
 use uiserver::UiServer;
 use config::LocalConfig;
-//use activity::DNSActyvityMonitor;
 
 struct DnsProxy {
     pub running: Arc<AtomicBool>,
@@ -175,9 +174,6 @@ impl DnsProxy {
         if !is_found || reject_count == 1 {
             log_info!(&log_string);
         }
-
-        //DNSActyvityMonitor::add_requested_name(&asked_name, &ip_addr);
-
         let send_result = socket.send_to(&dns_response, ip_addr);
         if send_result.is_err() {
             return Err(send_result.err().unwrap());
@@ -218,9 +214,9 @@ impl DnsProxy {
         Ok((dns_req_vec, remote_ip_addr))
     }
 
-    pub fn start_dns_filter(&self, filter_ref: &Arc<Mutex<FilterConfig>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
+    pub fn start_dns_filter(&self, filter_prot: &Arc<Mutex<FilterConfig>>, cfg_prot: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         let tpool = ThreadPool::new(4);
-        let cfg = cfg_ref.lock().unwrap();
+        let cfg = cfg_prot.lock().unwrap();
         let bind_addr = cfg.get_bind_addr();
         drop(cfg);
         log_info!("Bind: {}\n", bind_addr);
@@ -239,9 +235,9 @@ impl DnsProxy {
                 return Err(listen_result.err().unwrap());
             }
             let (dns_req_pack, ip_addr) = listen_result.unwrap();
-            let shared_filter = Arc::clone(filter_ref);
+            let shared_filter = Arc::clone(filter_prot);
             let shared_curl = Arc::clone(&self.curl);
-            let shared_cfg = Arc::clone(cfg_ref);
+            let shared_cfg = Arc::clone(cfg_prot);
             tpool.execute(move || {
                 // Handle the request
                 let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &shared_filter, &shared_curl, &shared_cfg);
@@ -253,7 +249,7 @@ impl DnsProxy {
             });
             //tpool.log_status();
             let stat = tpool.get_stat();
-            let mut cfg = cfg_ref.lock().unwrap();
+            let mut cfg = cfg_prot.lock().unwrap();
             cfg.set_tpool_stat(&stat);
             drop(cfg);
         }
@@ -290,25 +286,42 @@ fn wait_threads(proxy_thread: &JoinHandle<()>, proxy_run: &Arc<AtomicBool>, ui_t
 
 fn main() -> Result<(), std::io::Error>
 {
+    let args: Vec<String> = env::args().collect();
     let (tx_proxy, rx_proxy) = mpsc::channel();
     let (tx_ui, rx_ui) = mpsc::channel();
-    let mut cfg = LocalConfig::new();
-    cfg.read_config();
-    // Force set listen port. Need for debug environment
-    cfg.parse_cmd_params();
-    let config = Arc::new(Mutex::new(cfg));
-    
-    let mut flt = FilterConfig::new();
-    let res = flt.create_black_list_map();
-    if res.is_err() {
-        log_error!("Create filter failed: {}\n", res.err().unwrap());
-        log_info!("Start with empty filter\n");
-    }
-    let filter = Arc::new(Mutex::new(flt));
-    log_info!("Filter was created\n");
-
     let dns_proxy_server = DnsProxy::new();
     let mut ui_server = UiServer::new();
+    let mut filter: FilterConfig = FilterConfig::new();
+    let mut srv_config: LocalConfig = LocalConfig::new();
+    srv_config.read_config();
+    // Force set listen port. Need for debug environment
+    if args.len() >= 3 {
+        for i in 1..args.len() {
+            if args[i] == "--port" {
+                if i + 1 < args.len() {
+                    let res = args[i + 1].parse::<u16>();
+                    if res.is_ok() {
+                        let port_no: u16 = res.unwrap();
+                        log_info!("Set DNS port from command line parameter: {}\n", port_no);
+                        srv_config.set_bind_port(port_no);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    let cfg_result = filter.create_black_list_map();
+    if cfg_result.is_err() {
+        log_error!("Create filter failed: {}\n", cfg_result.err().unwrap());
+        log_info!("Start with empty filter\n");
+    }
+    log_info!("Filter was created\n");
+    let filter_prot = Arc::new(Mutex::new(filter));
+    let ui_filter_prot = Arc::clone(&filter_prot);
+    let cfg_prot = Arc::new(Mutex::new(srv_config));
+    let ui_cfg_prot = Arc::clone(&cfg_prot);
+
     let running_ui = Arc::clone(&ui_server.running);
     let running_proxy = Arc::clone(&dns_proxy_server.running);
     // Set ^C handler
@@ -316,21 +329,17 @@ fn main() -> Result<(), std::io::Error>
         log_error!("Unable to set ^C handle\n");
     }
     // Start DNS proxy thread
-    let filter_ref = Arc::clone(&filter);
-    let cfg_ref = Arc::clone(&config);
     let proxy_thread = thread::spawn(move || {
-        let res = dns_proxy_server.start_dns_filter(&filter_ref, &cfg_ref);
+        let res = dns_proxy_server.start_dns_filter(&filter_prot, &cfg_prot);
         tx_proxy.send(res).unwrap();
     });
     // Start UI thread
-    let filter_ref = Arc::clone(&filter);
-    let cfg_ref = Arc::clone(&config);
     let ui_thread = thread::spawn(move || {
-        let res: Result<(), Error> = ui_server.start_gui_server(&filter_ref, &cfg_ref);
+        let res: Result<(), Error> = ui_server.start_gui_server(&ui_filter_prot, &ui_cfg_prot);
         tx_ui.send(res).unwrap();
     });
     // Wait for finish
-    wait_threads(&proxy_thread, &running_proxy, &ui_thread, &running_ui);
+    wait_threads(&proxy_thread, &running_proxy,&ui_thread, &running_ui);
     let _ = ui_thread.join();
     let _ = proxy_thread.join();
     // Finished. Read results
