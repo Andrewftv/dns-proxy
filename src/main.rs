@@ -22,6 +22,8 @@ struct DnsProxy {
     pub curl: Arc<Mutex<Easy>>,
 }
 
+pub const THREAD_POOL_SIZE: usize = 4;
+
 impl DnsProxy {
     pub fn new() -> DnsProxy {
         let mut curl = Easy::new();
@@ -221,7 +223,7 @@ impl DnsProxy {
     }
 
     pub fn start_dns_filter(&self, filter_ref: &Arc<Mutex<FilterConfig>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
-        let tpool = ThreadPool::new(4);
+        let tpool = ThreadPool::new(THREAD_POOL_SIZE);
         let cfg = cfg_ref.lock().unwrap();
         let bind_addr = cfg.get_bind_addr();
         drop(cfg);
@@ -241,12 +243,12 @@ impl DnsProxy {
                 return Err(listen_result.err().unwrap());
             }
             let (dns_req_pack, ip_addr) = listen_result.unwrap();
-            let shared_filter = Arc::clone(filter_ref);
-            let shared_curl = Arc::clone(&self.curl);
-            let shared_cfg = Arc::clone(cfg_ref);
+            let filter = Arc::clone(filter_ref);
+            let curl = Arc::clone(&self.curl);
+            let cfg = Arc::clone(cfg_ref);
             tpool.execute(move || {
                 // Handle the request
-                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &shared_filter, &shared_curl, &shared_cfg);
+                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &filter, &curl, &cfg);
                 // Not sure if we realy need this call
                 drop(dns_req_pack);
                 if query_result.is_err() {

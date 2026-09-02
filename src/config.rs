@@ -3,6 +3,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use crate::{log_error, log_debug, log_info};
 use crate::tpool::TPoolStat;
+use crate::THREAD_POOL_SIZE;
 
 pub struct LocalConfig {
     /* Config part */
@@ -31,7 +32,7 @@ impl LocalConfig {
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
             use_doh: true,
-            tpool_stat: TPoolStat::new(4)
+            tpool_stat: TPoolStat::new(THREAD_POOL_SIZE)
         }
     }
 
