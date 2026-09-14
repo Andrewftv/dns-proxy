@@ -1,8 +1,8 @@
-use std::io;
+use std::{io, fs};
 use std::io::{BufRead, Error, ErrorKind};
 use std::collections::BTreeMap;
-use std::str;
-use std::net::SocketAddr;
+use std::str::{self, FromStr};
+use std::net::Ipv4Addr;
 use crate::log_info;
 use crate::log_debug;
 use crate::log_error;
@@ -10,17 +10,24 @@ use curl::easy::Easy;
 use std::io::Write;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
-use crate::activity::DNSActyvityMonitor;
 
 pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
 pub const LOCAL_WHITELIST_FILE_NAME: &str = "local-whitelist.txt";
+const LOCAL_NAMES_FILE_NAME: &str = "local-names.txt";
 
 #[derive(Clone, PartialEq, Copy)]
 enum FilterType {
     Global,
     Local,
     None
+}
+
+#[derive(PartialEq)]
+pub enum SearchResult {
+    Found,
+    NotFound,
+    LocalName
 }
 
 #[derive(Clone)]
@@ -59,8 +66,8 @@ pub enum FilterUpdateStatus {
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
     ads_provider_wildcard: BTreeMap<String, Statistics>,
+    local_names: BTreeMap<String, Ipv4Addr>,
     update_status: FilterUpdateStatus,
-    activity: DNSActyvityMonitor
 }
 
 impl FilterConfig {
@@ -76,13 +83,9 @@ impl FilterConfig {
         {
             ads_provider_list: BTreeMap::new(),
             ads_provider_wildcard: BTreeMap::new(),
+            local_names: BTreeMap::new(),
             update_status: FilterUpdateStatus::Unchanged,
-            activity: DNSActyvityMonitor::new()
         }
-    }
-
-    pub fn add_requested_name(&self, name: &String, ip_addr: &SocketAddr) {
-        self.activity.add_requested_name(name, ip_addr);
     }
 
     fn get_remote_blocklist_length(curl: &mut Easy) -> Result<u64, curl::Error> {
@@ -148,6 +151,26 @@ impl FilterConfig {
 
     pub fn is_error(&self) -> bool {
         return self.update_status == FilterUpdateStatus::DownloadError;
+    }
+
+    pub fn prepare_local_dns_table(&self) -> String {
+        let mut ret_str: String = Default::default();
+        for (key, value) in self.local_names.iter() {
+            ret_str += "<tr><td>";
+            ret_str += &value.to_string();
+            ret_str += "</td><td>";
+            ret_str += key;
+            ret_str += "</td><td>";
+            ret_str += "<div style=\"display: flex; justify-content: flex-end; width: 100%; background-color: inherit;\">";
+            ret_str += "<button type=\"button\" class=\"imgbutton\" name=\"";
+            ret_str += key;
+            ret_str += "\" onclick=\"handle_delete_name(this)\">";
+            ret_str += "<img src=\"images/delete_button.png\" alt=\"Delete\" width=\"30\" height=\"30\"></button>";
+            ret_str += "</div>";
+            ret_str +="</td></tr>";
+        }
+
+        return ret_str;
     }
 
     pub fn prepare_stat_data(&self) -> String {
@@ -267,7 +290,7 @@ impl FilterConfig {
         }
     }
 
-    pub fn search_wildcard(&mut self, name: &String) -> (bool, u64) {
+    pub fn search_wildcard(&mut self, name: &String) -> (SearchResult, u64) {
         for (key, stat) in self.ads_provider_wildcard.iter_mut() {
             let parts: Vec<&str> = key.split('*').collect();
             let first_star: bool = if key.chars().nth(0).unwrap() == '*' {true} else {false};
@@ -306,29 +329,48 @@ impl FilterConfig {
             }
             if index == name.len() || key.chars().nth(key.len() - 1).unwrap() == '*' {
                 if stat.enable {
-                    return (false, 0);            
+                    return (SearchResult::NotFound, 0);            
                 }
                 log_debug!("FOUND: wildcard: {} name: {}\n", key, name);
                 let reject_count = stat.inc_request_count();
-                return (true, reject_count);
+                return (SearchResult::Found, reject_count);
             }
         }
 
-        return (false, 0);
+        return (SearchResult::NotFound, 0);
     }
 
-    pub fn search(&mut self, key : &String) -> (bool, u64) {
+    pub fn get_local_name(&self, key: &String) -> Option<Ipv4Addr> {
+        return self.local_names.get(key).copied();
+    }
+
+    pub fn set_local_name(&mut self, name: &String, ip_addr: Ipv4Addr) {
+        self.local_names.insert(name.to_string(), ip_addr);
+    }
+
+    pub fn remove_local_name(&mut self, name: &String) {
+        self.local_names.remove(name);
+    }
+
+    pub fn search(&mut self, key : &String, resolve_local: bool) -> (SearchResult, u64) {
+        if resolve_local {
+            let loc_opt = self.local_names.get(key);
+            if loc_opt.is_some() {
+                return (SearchResult::LocalName, 0);
+            }
+        }
+
         let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
             return self.search_wildcard(key)
         }
         let stat  = stat_opt.unwrap();
         if stat.enable {
-            return (false, 0);
+            return (SearchResult::NotFound, 0);
         }
         let reject_count = stat.inc_request_count();
 
-        return (true, reject_count);
+        return (SearchResult::Found, reject_count);
     }
 
     pub fn reload_filter(&mut self) -> Result<(), std::io::Error> {
@@ -336,6 +378,53 @@ impl FilterConfig {
         self.ads_provider_wildcard.clear();
 
         return self.create_black_list_map();
+    }
+
+    pub fn write_local_dns_file(&self) -> bool {
+        let mut contant: String = Default::default();
+        for (name, ip_addr) in self.local_names.iter() {
+            contant += &(name.to_owned() + ":" + &ip_addr.to_string() + "\n");
+        }
+        let res = fs::write(LOCAL_NAMES_FILE_NAME, contant);
+        if res.is_err() {
+            log_error!("Error write configuration file\n");
+            return false;
+        }
+        return true;
+    }
+
+    pub fn create_local_names_map(&mut self) -> Result<(), std::io::Error> {
+        let res = std::fs::File::open(LOCAL_NAMES_FILE_NAME);
+        if res.is_err() {
+            if res.is_err() {
+                return Err(Error::new(ErrorKind::NotFound, format!("Unable to open {}", LOCAL_NAMES_FILE_NAME)));
+            }
+        }
+        let file = res.unwrap();
+        let reader = io::BufReader::new(file);
+        for line in reader.lines() {
+            if line.is_err() {
+                continue;
+            }
+            let single_line = line.unwrap();
+            if single_line.is_empty() {
+                continue;
+            }
+            let parts: Vec<&str> = single_line.split(':').collect();
+            if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+                continue;
+            }
+            let res = Ipv4Addr::from_str(parts[1]);
+            if res.is_err() {
+                continue;
+            }
+            let ip_addr = res.unwrap();
+            self.local_names.insert(parts[0].to_string(), ip_addr);
+        }
+
+        log_debug!("Local names list has: {} entries\n", self.local_names.len());
+
+        Ok(())
     }
 
     pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {

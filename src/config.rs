@@ -3,13 +3,14 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use crate::{log_error, log_debug, log_info};
 use crate::tpool::TPoolStat;
-use crate::THREAD_POOL_SIZE;
+use crate::DnsProxy;
 
 pub struct LocalConfig {
     /* Config part */
     bind_addr: std::net::SocketAddr,
     dns_srv_addr: std::net::SocketAddr,
     use_doh: bool,
+    local_dns_enable: bool,
     /* Statistics part */
     tpool_stat: TPoolStat
 }
@@ -23,6 +24,7 @@ impl LocalConfig {
     const USE_DOH_NAME: &str = "use_DoH";
     const YES_VALUE: &str = "yes";
     const NO_VALUE: &str = "no";
+    const LOCAL_DNS_NAME: &str = "local_dns_enable";
 
     pub fn new() -> LocalConfig {
         LocalConfig
@@ -32,7 +34,8 @@ impl LocalConfig {
             dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
             /* Use DNS over HTTPS */
             use_doh: true,
-            tpool_stat: TPoolStat::new(THREAD_POOL_SIZE)
+            local_dns_enable: true,
+            tpool_stat: TPoolStat::new(DnsProxy::THREAD_POOL_SIZE)
         }
     }
 
@@ -96,7 +99,12 @@ impl LocalConfig {
         data += &("    \"".to_string() + LocalConfig::USE_DOH_NAME + "\": ");
         data += "\"";
         data += if self.use_doh == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
-        data += "\"\n"; 
+        data += "\",\n"; 
+
+        data += &("    \"".to_string() + LocalConfig::LOCAL_DNS_NAME + "\": ");
+        data += "\"";
+        data += if self.local_dns_enable == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
+        data += "\"\n";
 
         data += "}";
 
@@ -146,6 +154,15 @@ impl LocalConfig {
                     self.use_doh = true;
                 } else if value == LocalConfig::NO_VALUE {
                     self.use_doh = false;
+                } else {
+                    log_error!("Invalid value\n");
+                }
+            },
+            LocalConfig::LOCAL_DNS_NAME => {
+                if value == LocalConfig::YES_VALUE {
+                    self.local_dns_enable = true;
+                } else if value == LocalConfig::NO_VALUE {
+                    self.local_dns_enable = false;
                 } else {
                     log_error!("Invalid value\n");
                 }
@@ -236,5 +253,13 @@ impl LocalConfig {
 
     pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) {
         self.dns_srv_addr = addr;
+    }
+
+    pub fn set_local_dns_enable(&mut self, enable: bool) {
+        self.local_dns_enable = enable;
+    }
+
+    pub fn get_local_dns_enable(&self) -> bool {
+        return self.local_dns_enable;
     }
 }

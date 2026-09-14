@@ -3,9 +3,8 @@ mod filter;
 mod tpool;
 mod uiserver;
 mod config;
-mod activity;
 
-use std::{io::{Error, ErrorKind}, net::UdpSocket, str, thread::{self, JoinHandle}, time::Duration};
+use std::{io::{Error, ErrorKind}, net::{Ipv4Addr, UdpSocket}, str, thread::{self, JoinHandle}, time::Duration};
 #[allow(unused_imports)]
 use utils::print_dump;
 use filter::FilterConfig;
@@ -16,15 +15,16 @@ use curl::easy::{Easy, List};
 use std::io::Read;
 use uiserver::UiServer;
 use config::LocalConfig;
+use filter::SearchResult;
 
 struct DnsProxy {
     pub running: Arc<AtomicBool>,
     pub curl: Arc<Mutex<Easy>>,
 }
 
-pub const THREAD_POOL_SIZE: usize = 4;
-
 impl DnsProxy {
+    pub const THREAD_POOL_SIZE: usize = 4;
+
     pub fn new() -> DnsProxy {
         let mut curl = Easy::new();
         let _ = curl.post(true);
@@ -98,13 +98,12 @@ impl DnsProxy {
         Ok(dns_response)
     }
 
-    fn get_asked_string(dns_req_pack : &Vec<u8>) -> String {
+    fn get_asked_string(dns_req_pack : &Vec<u8>, q_type: &mut u16) -> String {
         let mut offset: usize = 12;
         let mut len : u8 = dns_req_pack[offset];
-        let mut name : &str;
         let mut ask_name : String = Default::default();
         while len != 0 {
-            name = std::str::from_utf8(&dns_req_pack[offset + 1..offset + 1 + len as usize]).unwrap();
+            let name = std::str::from_utf8(&dns_req_pack[offset + 1..offset + 1 + len as usize]).unwrap();
             ask_name = ask_name + name;
             offset = offset + len as usize + 1;
             if offset >= dns_req_pack.len() {
@@ -124,40 +123,116 @@ impl DnsProxy {
             ask_name = ask_name.chars().skip(4).collect();   
         }
 
+        offset += 1;
+        *q_type = u16::from_be_bytes(dns_req_pack[offset..offset + 2].try_into().unwrap());
+
         return ask_name;
+    }
+
+    fn create_not_exist_response(packet: &mut [u8], sess_id: u16) -> usize {
+        packet[0..2].copy_from_slice(&sess_id.to_be_bytes());
+        // Set bit response
+        packet[2] = 1 << 7;
+        // Set error code
+        packet[3] = 3; /* NOT EXIST */
+
+        return 12;
+    }
+
+    fn create_standard_response(packet: &mut [u8], sess_id: u16, q_type: u16, name: &str, ip_addr: &Ipv4Addr) -> usize {
+        if q_type != 1 {
+            return DnsProxy::create_not_exist_response(packet, sess_id);
+        }
+
+        let q_class: u16 = 1;
+        let valid_time: u32 = 0xFFFF;
+        let data_size: u16 = 4;
+        let parts: Vec<&str> = name.split('.').collect();
+        // Copy ID field
+        let mut packet_size: usize = 12;
+        packet[0..size_of::<u16>()].copy_from_slice(&sess_id.to_be_bytes());
+        // Flags
+        packet[2] = 0x81;
+        packet[3] = 0x80;
+        // Questions
+        packet[5] = 1;
+        // Answers
+        packet[7] = 1;
+        // Query
+        for i in 0..parts.len() {
+            packet[packet_size] = parts[i].len() as u8;
+            packet_size += 1;
+            packet[packet_size..packet_size + parts[i].len()].copy_from_slice(parts[i].as_bytes());
+            packet_size += parts[i].len();
+        }
+        packet_size += 1;
+        packet[packet_size..packet_size + size_of::<u16>()].copy_from_slice(&q_type.to_be_bytes());
+        packet_size += size_of::<u16>();
+        packet[packet_size..packet_size + size_of::<u16>()].copy_from_slice(&q_class.to_be_bytes());
+        packet_size += size_of::<u16>();
+        // Answer
+        packet[packet_size] = 0xC0; // NAME
+        packet_size += 1;
+        packet[packet_size] = 0x0C; // Offset in this packet
+        packet_size += 1;
+        packet[packet_size..packet_size + size_of::<u16>()].copy_from_slice(&q_type.to_be_bytes());
+        packet_size += size_of::<u16>();
+        packet[packet_size..packet_size + size_of::<u16>()].copy_from_slice(&q_class.to_be_bytes());
+        packet_size += size_of::<u16>();
+        packet[packet_size..packet_size + size_of::<u32>()].copy_from_slice(&valid_time.to_be_bytes());
+        packet_size += size_of::<u32>();
+        packet[packet_size..packet_size + size_of::<u16>()].copy_from_slice(&data_size.to_be_bytes());
+        packet_size += size_of::<u16>();
+        packet[packet_size..packet_size + size_of::<u32>()].copy_from_slice(&ip_addr.octets());
+        packet_size += size_of::<u32>();
+
+        return packet_size;
     }
 
     fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : std::net::SocketAddr, 
         filter_ref : &Arc<Mutex<FilterConfig>>, curl_ref: &Arc<Mutex<Easy>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
 
-        let asked_name = DnsProxy::get_asked_string(dns_req_pack);
+        let mut q_type: u16 = 0;
+        let asked_name = DnsProxy::get_asked_string(dns_req_pack, &mut q_type);
         let cfg = cfg_ref.lock().unwrap();
         let dns_srv_addr = cfg.get_dns_srv_addr();
         let use_doh = cfg.get_use_doh();
+        let resolve_local = cfg.get_local_dns_enable();
         drop(cfg);
         let mut flt = filter_ref.lock().unwrap();
-        let dns_response : Vec<u8>;
-        let (is_found, reject_count) = flt.search(&asked_name);
+        let mut dns_response : Vec<u8> = vec![];
+        let (is_found, reject_count) = flt.search(&asked_name, resolve_local);
         let mut log_string: String = Default::default();
-        if !is_found || reject_count == 1 {
+        if is_found == SearchResult::NotFound || reject_count == 1 {
             //log_info!("Ask for: {}", asked_name);
             log_string = format!("Ask for: {}", asked_name);
         }
         drop(flt);
-        if is_found {
-            let mut reject_buff : [u8; 12] = [0; 12];
-            // Copy ID field
-            reject_buff[0] = dns_req_pack[0];
-            reject_buff[1] = dns_req_pack[1];
-            // Set bit response
-            reject_buff[2] = 1 << 7;
-            // Set error code
-            reject_buff[3] = 3; /* NOT EXIST */
+        let sess_id: u16 = u16::from_be_bytes(dns_req_pack[0..2].try_into().unwrap());
+        if is_found == SearchResult::Found {
+            let mut reject_buff: [u8; 12] = [0; 12];
 
+            DnsProxy::create_not_exist_response(&mut reject_buff, sess_id);
             dns_response = reject_buff.to_vec();
             if reject_count == 1 {
                 log_string += "   \x1b[31m[rejected]\x1b[0m\n";
             }
+        } else if is_found == SearchResult::LocalName {
+            let mut response: [u8; 512] = [0; 512];
+            let flt = filter_ref.lock().unwrap();
+            let opt = flt.get_local_name(&asked_name);
+            drop(flt);
+            if opt.is_none() {
+                log_debug!("Some thing went wrong. Name: {} not found\n", asked_name);
+                return Ok(());
+            }
+            let ip_addr: Ipv4Addr = opt.unwrap();
+            log_debug!("Resolve local name: {} to {}\n", asked_name, ip_addr);
+            let packet_size = DnsProxy::create_standard_response(&mut response, sess_id, q_type, &asked_name, &ip_addr);
+
+            dns_response.resize(packet_size, 0);
+            dns_response.copy_from_slice(&response[0..packet_size]);
+
         } else {
             let lookup_result: Result<Vec<u8>, Error>;
             if use_doh {
@@ -170,17 +245,13 @@ impl DnsProxy {
                 return Err(lookup_result.err().unwrap());
             }
             dns_response = lookup_result.unwrap();
-            if !is_found {
+            if is_found == SearchResult::NotFound {
                 log_string += "   \x1b[32m[allowed]\x1b[0m\n";
             }
         }
-        if !is_found || reject_count == 1 {
+        if is_found == SearchResult::NotFound || reject_count == 1 {
             log_info!(&log_string);
         }
-
-        let flt = filter_ref.lock().unwrap();
-        flt.add_requested_name(&asked_name, &ip_addr);
-        drop(flt);
 
         let send_result = socket.send_to(&dns_response, ip_addr);
         if send_result.is_err() {
@@ -223,7 +294,7 @@ impl DnsProxy {
     }
 
     pub fn start_dns_filter(&self, filter_ref: &Arc<Mutex<FilterConfig>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
-        let tpool = ThreadPool::new(THREAD_POOL_SIZE);
+        let tpool = ThreadPool::new(DnsProxy::THREAD_POOL_SIZE);
         let cfg = cfg_ref.lock().unwrap();
         let bind_addr = cfg.get_bind_addr();
         drop(cfg);
@@ -307,6 +378,12 @@ fn main() -> Result<(), std::io::Error>
     if res.is_err() {
         log_error!("Create filter failed: {}\n", res.err().unwrap());
         log_info!("Start with empty filter\n");
+    }
+    let res = flt.create_local_names_map();
+    if res.is_err() {
+        log_error!("Create local names list failed: {}\n", res.err().unwrap());
+        log_info!("Start with empty local na
+        mes list\n");
     }
     let filter = Arc::new(Mutex::new(flt));
     log_info!("Filter was created\n");

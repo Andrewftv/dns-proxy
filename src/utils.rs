@@ -3,12 +3,26 @@ use chrono::{DateTime, Local};
 #[allow(dead_code)]
 #[cfg(debug_assertions)]
 pub fn print_dump(buff : &[u8], size : usize) {
+    let mut text: Vec<char> = Vec::new();
     for i in 0..size {
         if i != 0 && ((i % 16) == 0) {
+            let s: String = text.clone().into_iter().collect();
+            print!(" | {} |", s);
+            text.clear();
             print!("\n");
         }
+        if (i % 16) == 0 {
+            print!("{:04X} : ", i);
+        }
         print!("{:02X?} ", buff[i]);
+        if buff[i] >= 0x20 && buff[i] < 0x7F {
+            text.push(buff[i] as char);
+        } else {
+            text.push('.');
+        }
     }
+    let s: String = text.clone().into_iter().collect();
+    print!(" | {} |", s);
     print!("\n");
 }
 

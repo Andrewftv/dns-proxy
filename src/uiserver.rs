@@ -1,4 +1,4 @@
-use std::net::TcpListener;
+use std::net::{Ipv4Addr, TcpListener};
 use std::io::{prelude::*, Error, ErrorKind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -51,6 +51,8 @@ impl UiServer {
     const TAG_FILTER_STATUS: &str = "{#FILTER_STATUS}";
     const TAG_UPDATE_CHECK: &str = "{#UPDATE_CHECK}";
     const TAG_HIDE_POPUP: &str = "{#HIDE_POPUP}";
+    const TAG_LOCAL_DNS: &str = "{#LOCAL_DNS_STATUS}";
+    const TAG_LOCAL_DNS_NAMES: &str = "{#LOCAL_DNS_NAMES}";
     const MSG_FILTER_UP_TO_DATE: &str = "<strong>Filter is up to date</strong>";
     const MSG_FILTER_UPDATED: &str = "<strong>Filter was updated</strong>";
     const MSG_FILTER_RELOADED: &str = "<strong>Filter was reloaded</strong>";
@@ -160,7 +162,6 @@ impl UiServer {
                     stat_table += "</td>\n";
                     stat_table += "</tr>\n";
                 }
-
                 stat_table
             }
             UiServer::TAG_HIDE_POPUP => {
@@ -186,6 +187,19 @@ impl UiServer {
                 drop(filter);
 
                 status_str.to_string()
+            }
+            UiServer::TAG_LOCAL_DNS => {
+                if srv_cfg.get_local_dns_enable() {
+                    "checked".to_string()
+                } else {
+                    "unchecked".to_string()
+                }
+            }
+            UiServer::TAG_LOCAL_DNS_NAMES => {
+                let filter = mfilter.lock().unwrap();
+                let names = filter.prepare_local_dns_table();
+                drop(filter);
+                names
             }
             _=> Default::default(),
         };
@@ -412,8 +426,19 @@ impl UiServer {
                     cfg.set_use_doh(res.unwrap());
                     drop(cfg);
                 }
+                "local_dns_enable" => {
+                    let res = param.value.parse::<bool>();
+                    if res.is_err() {
+                        log_error!("Error parsing use local DNS\n");
+                        return false;
+                    }
+                    let mut cfg = mcfg.lock().unwrap();
+                    cfg.set_local_dns_enable(res.unwrap());
+                    drop(cfg);
+                }
                 _ => {
                     log_error!("Unexpected parameter: {}\n", param.name);
+                    return false;
                 }
             };
         }
@@ -562,6 +587,7 @@ impl UiServer {
                 "GET /statistics.html HTTP/1.1" |
                 "GET /about.html HTTP/1.1" |
                 "GET /change_ip.html HTTP/1.1" |
+                "GET /local_dns.html HTTP/1.1" |
                 "GET /classes.css HTTP/1.1" => {
                     let name = UiServer::get_requested_file(tags[0][..].to_string());
                     self.set_status_code("HTTP/1.1 200 OK");
@@ -582,6 +608,8 @@ impl UiServer {
                     }
                 }
                 "GET /favicon.ico HTTP/1.1" |
+                "GET /images/delete_button.png HTTP/1.1" |
+                "GET /images/add_button.png HTTP/1.1" |
                 "GET /images/banner.png HTTP/1.1" => {
                     let name = UiServer::get_requested_file(tags[0][..].to_string());
                     let res = UiServer::read_image(&name);
@@ -597,6 +625,66 @@ impl UiServer {
                     else {
                         "".to_string().into_bytes()
                     }
+                }
+                "POST /delete_dns_name HTTP/1.1" => {
+                    let mut data = Vec::with_capacity(1024);
+                    data.resize(1024, 0); 
+                    let res = UiServer::get_post_data(&request, &mut data);
+                    if res.is_ok() {
+                        data.truncate(res.unwrap());
+                        log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
+                        let opt = UiServer::parse_post_params(&data);
+                        if opt.is_some() {
+                            let params = opt.unwrap();
+                            if params.len() == 1 && params[0].name == "delete_dns_name" {
+                                let mut filter = mfilter.lock().unwrap();
+                                filter.remove_local_name(&params[0].value);
+                                filter.write_local_dns_file();
+                                drop(filter);
+                            }
+                        }
+                    }
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
+                }
+                "POST /new_dns_name HTTP/1.1" => {
+                    let mut data = Vec::with_capacity(1024);
+                    data.resize(1024, 0); 
+                    let res = UiServer::get_post_data(&request, &mut data);
+                    if res.is_ok() {
+                        data.truncate(res.unwrap());
+                        log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
+                        let opt = UiServer::parse_post_params(&data);
+                        if opt.is_some() {
+                            let params = opt.unwrap();
+                            if params.len() == 2 && params[0].name == "local_dns_name" && params[1].name == "local_ip_addr" {
+                                let res = params[1].value.parse::<Ipv4Addr>();
+                                if res.is_ok() {
+                                    let mut filter = mfilter.lock().unwrap();
+                                    filter.set_local_name(&params[0].value, res.unwrap());
+                                    filter.write_local_dns_file();
+                                    drop(filter);
+                                }
+                            }
+                        }
+                    }
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
+                }
+                "POST /local_dns HTTP/1.1" => {
+                    let mut data = Vec::with_capacity(1024);
+                    data.resize(1024, 0); 
+                    let res = UiServer::get_post_data(&request, &mut data);
+                    if res.is_ok() {
+                        data.truncate(res.unwrap());
+                        log_debug!("DATA: {}\n", String::from_utf8(data.to_vec()).unwrap());
+                        let opt = UiServer::parse_post_params(&data);
+                        if opt.is_some() {
+                            UiServer::set_post_param(&opt.unwrap(), mcfg);
+                        }
+                    }
+                    self.set_status_code("HTTP/1.1 200 OK");
+                    self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
                 "POST /dns_change_ip HTTP/1.1" => {
                     let mut data = Vec::with_capacity(1024);

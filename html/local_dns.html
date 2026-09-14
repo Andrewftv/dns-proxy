@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="classes.css" type="text/css">
+    <meta charset="utf-8">
+    <title>DNS AdCleaner</title>
+<style>
+.switch {
+  margin-top: 5px;
+  margin-left: 10px;
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+/* Rounded sliders */
+.slider.round {
+  border-radius: 34px;
+}
+.slider.round:before {
+  border-radius: 50%;
+}
+/* Styling the dialog element */
+dialog {
+  border: none;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  font-family: sans-serif;
+}
+
+/* Backdrop overlay */
+dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+#closeModalBtn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+}
+.input-error {
+  border: 2px solid #ff0000 !important;
+  background-color: #fff5f5;
+}
+@keyframes blinker {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* The utility class applies the loop infinitely */
+.blink-control {
+  animation: blinker 1.0s linear infinite;
+}
+</style>
+</head>
+<body>
+    <div class="container">
+      <div class="menu">
+        <p><a href="/">Home</a></p>
+        <p><a href="local_dns.html">Local DNS</a></p>
+        <p><a href="statistics.html">Rejects</a></p>
+        <p><a href="tpool_stats.html">Performance</a></p>
+        <p><a href="about.html">About</a></p>  
+      </div>
+      <div class="header">
+        <h2>Local DNS</h2>
+      </div>
+      <div class="contant">
+        <div>
+          <lable for="enable_switch_id">Enable: </lable>
+          <label class="switch">
+          <input type="checkbox" id="enable_switch_id" {#LOCAL_DNS_STATUS}>
+          <span class="slider round"></span></label>
+        </div>
+        <br>
+        <div id="whole_page">
+          <div style="display: flex; justify-content: flex-end; margin-right: 20px;">
+            <button id="add_name_id" class="imgbutton">
+              <img src="images/add_button.png" alt="Add" width="30" height="30">
+            </button>
+          </div>
+          <hr style="color: #eee; margin-left: 20px; margin-right: 20px;">
+          <br>
+          <table>
+            <tr><th>IP Address</th><th>Name</th><th>Action</th></tr>
+            {#LOCAL_DNS_NAMES}
+          </table>
+        </div>
+
+        <!-- Modal Dialog Element -->
+        <dialog id="settingsModal">
+        <div class="modal-header">
+            <h2>Local DNS name</h2>
+            <button id="closeModalBtn" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p>New DNS name: </p>
+            <input type="text" id="dns_name" name="dns_name">
+            <p>IP address:</p>
+            <input type="text" id="ip_address" name="ip_address" placeholder="192.168.1.10">
+        </div>
+        <div class="modal-footer">
+            <button id="cancel_btn_id" type="button">Cancel</button>
+            <button id="save_btn" type="button" class="btn-primary">OK</button>
+        </div>
+        </dialog>
+      </div>
+    </div>
+
+    <script>
+      /* disable page if the feature disable */
+      window.addEventListener("load", () => {
+        if (!document.getElementById('enable_switch_id').checked) {
+          document.getElementById('whole_page').style.pointerEvents = "none";
+          document.getElementById('whole_page').style.opacity = "0.5";
+        }
+      });
+
+      async function handle_delete_name(ctrl) {
+        console.info("Delete name here:" + ctrl.name);
+        const response = await fetch('/delete_dns_name', {
+          method: 'POST',
+          body: ('delete_dns_name=' + ctrl.name)
+        });
+        if (response.ok) {
+          location.reload();
+        }
+      }
+
+      const toggle = document.getElementById('enable_switch_id');
+
+      toggle.addEventListener('change', async (event) => {
+        const isEnabled = event.target.checked;
+        const response = await fetch('/local_dns', {
+          method: 'POST',
+          body: ('local_dns_enable=' + isEnabled)
+        });
+        if (!response.ok) {
+          console.error(error);
+          event.target.checked = !isEnabled;
+        } else {
+          let whole_page = document.getElementById('whole_page');
+          if (isEnabled) {
+            whole_page.style.pointerEvents = "auto";
+            whole_page.style.opacity = "1";
+          } else {
+            whole_page.style.pointerEvents = "none";
+            whole_page.style.opacity = "0.5";
+          }
+        }
+      });
+ 
+      const modal = document.getElementById('settingsModal');
+      const openBtn = document.getElementById('add_name_id');
+      const closeBtn = document.getElementById('closeModalBtn');
+      const cancelBtn = document.getElementById('cancel_btn_id');
+      const saveBtn = document.getElementById('save_btn');
+      const dns_name_ctrl = document.getElementById("dns_name");
+      const ip_address_ctrl = document.getElementById("ip_address");
+
+      dns_name_ctrl.addEventListener('input', () => {
+        dns_name.classList.remove("input-error"); 
+        dns_name.classList.remove("blink-control");
+      });
+
+      ip_address_ctrl.addEventListener('input', () => {
+        ip_address.classList.remove("input-error"); 
+        ip_address.classList.remove("blink-control");
+      });
+
+      modal.addEventListener('close', async () => {
+        if (modal.returnValue === 'confirm') {
+          console.info('confirm');
+          const dns_name = document.getElementById('dns_name');
+          const ip_addr = document.getElementById('ip_address');
+          modal.returnValue = "";
+          const response = await fetch('/new_dns_name', {
+            method: 'POST',
+            body: ('local_dns_name=' + dns_name.value + '&local_ip_addr=' + ip_addr.value)
+            });
+
+          if (response.ok) {
+            dns_name.value = "";
+            ip_addr.value = "";
+            location.reload();
+          }
+        }
+      });
+
+      openBtn.addEventListener('click', () => {
+        modal.showModal();
+        const dns_name = document.getElementById('dns_name');
+        dns_name.focus();
+      });
+
+      const closeModal = () => modal.close();
+
+      saveBtn.addEventListener('click', () => {
+        const dns_name = document.getElementById('dns_name');
+        let name = dns_name.value;
+        if (name.length === 0) {
+          console.error('Empty name');
+          dns_name.classList.add("input-error"); 
+          dns_name.classList.add("blink-control");
+          dns_name.focus();
+          return;
+        }
+        const ip_addr = document.getElementById('ip_address');
+        let addr = ip_addr.value;
+        if (addr.length === 0) {
+          console.error('Empty IP address');
+          ip_addr.classList.add("input-error"); 
+          ip_addr.classList.add("blink-control");
+          ip_addr.focus();
+          return;
+        }
+        if (!isValidIPv4(addr)) {
+          ip_addr.classList.add("input-error");
+          ip_addr.classList.add("blink-control");
+          ip_addr.focus();
+          return;
+        }
+        console.info("Name: " + name + " IP: " + ip_addr.value);
+        modal.close('confirm');
+      });
+
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+
+      function isValidIPv4(ip) {
+        const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        return ipv4Regex.test(ip);
+      }
+    </script>
+
+</body>
+</html>

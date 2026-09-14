@@ -1,24 +1,47 @@
 a.button {
-    padding: 1px 6px;
-    border: 1px outset buttonborder;
-    border-radius: 3px;
-    color: buttontext;
-    background-color: buttonface;
-    text-decoration: none;
-    font-size: large;
-    font-family: "Times New Roman", Times, serif;
-    }
-  button.mysubmit {
-    padding: 1px 6px;
-    border: 1px outset buttonborder;
-    border-radius: 3px;
-    color: buttontext;
-    background-color: buttonface;
-    text-decoration: none;
-    font-size: large;
-    font-family: "Times New Roman", Times, serif;
-    cursor: pointer;
-    }
+  padding: 1px 6px;
+  border: 1px outset buttonborder;
+  border-radius: 3px;
+  color: buttontext;
+  background-color: buttonface;
+  text-decoration: none;
+  font-size: large;
+  font-family: "Times New Roman", Times, serif;
+}
+button.mysubmit {
+  padding: 1px 6px;
+  border: 1px outset buttonborder;
+  border-radius: 3px;
+  color: buttontext;
+  background-color: buttonface;
+  text-decoration: none;
+  font-size: large;
+  font-family: "Times New Roman", Times, serif;
+  cursor: pointer;
+}
+.imgbutton {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  /*background-color: inherit;*/
+  /* Smooth transition for animations */
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+.imgbutton img {
+    display: block;
+}
+/* Optional: Hover effect (slight fade in) */
+.imgbutton:hover {
+  opacity: 0.8;
+}
+
+/* Click Animation (Scales down slightly when pressed) */
+.imgbutton:active {
+  transform: scale(0.92);
+  opacity: 0.6;
+}
 
 .container {
     display: grid;
@@ -46,6 +69,10 @@ a.button {
   }
   .container div.contant {
     grid-area: content;
+    padding-left: 5px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    padding-right: 5px;
   }
   table {
     border-collapse: collapse;
