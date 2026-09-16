@@ -25,6 +25,7 @@ button.mysubmit {
   padding: 0;
   cursor: pointer;
   outline: none;
+  margin-left: 5px;
   /*background-color: inherit;*/
   /* Smooth transition for animations */
   transition: transform 0.1s ease, opacity 0.1s ease;
@@ -34,12 +35,12 @@ button.mysubmit {
 }
 /* Optional: Hover effect (slight fade in) */
 .imgbutton:hover {
-  opacity: 0.8;
+  opacity: 0.6;
 }
 
 /* Click Animation (Scales down slightly when pressed) */
 .imgbutton:active {
-  transform: scale(0.92);
+  transform: scale(0.85);
   opacity: 0.6;
 }
 

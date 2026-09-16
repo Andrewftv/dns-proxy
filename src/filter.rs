@@ -164,6 +164,11 @@ impl FilterConfig {
             ret_str += "<div style=\"display: flex; justify-content: flex-end; width: 100%; background-color: inherit;\">";
             ret_str += "<button type=\"button\" class=\"imgbutton\" name=\"";
             ret_str += key;
+            ret_str += "\" onclick=\"handle_edit_name(this)\">";
+            ret_str += "<img src=\"images/edit_button.png\" alt=\"Edit\" width=\"30\" height=\"30\"></button>";
+
+            ret_str += "<button type=\"button\" class=\"imgbutton\" name=\"";
+            ret_str += key;
             ret_str += "\" onclick=\"handle_delete_name(this)\">";
             ret_str += "<img src=\"images/delete_button.png\" alt=\"Delete\" width=\"30\" height=\"30\"></button>";
             ret_str += "</div>";

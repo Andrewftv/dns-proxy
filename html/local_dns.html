@@ -163,7 +163,7 @@ button {
           </div>
           <hr style="color: #eee; margin-left: 20px; margin-right: 20px;">
           <br>
-          <table>
+          <table id="local_names_table">
             <tr><th>IP Address</th><th>Name</th><th>Action</th></tr>
             {#LOCAL_DNS_NAMES}
           </table>
@@ -207,6 +207,26 @@ button {
         if (response.ok) {
           location.reload();
         }
+      }
+      function get_ip_by_name(name) {
+        const table = document.getElementById("local_names_table");
+        for (let i = 0; i < table.rows.length; i++) {
+          const row = table.rows[i];
+          if (row.cells[1].textContent === name) {
+            return row.cells[0]. textContent
+          }
+        }
+        return "";
+      }
+      function handle_edit_name(ctrl) {
+        console.info("Edit name here:" + ctrl.name);
+        modal.showModal();
+        let dns_name = document.getElementById('dns_name');
+        dns_name.value = ctrl.name;
+        dns_name.disabled = true;
+        let ip_addr = document.getElementById('ip_address');
+        ip_addr.value = get_ip_by_name(ctrl.name);
+        ip_addr.focus();
       }
 
       const toggle = document.getElementById('enable_switch_id');
@@ -259,7 +279,7 @@ button {
           const response = await fetch('/new_dns_name', {
             method: 'POST',
             body: ('local_dns_name=' + dns_name.value + '&local_ip_addr=' + ip_addr.value)
-            });
+          });
 
           if (response.ok) {
             dns_name.value = "";
@@ -271,8 +291,12 @@ button {
 
       openBtn.addEventListener('click', () => {
         modal.showModal();
-        const dns_name = document.getElementById('dns_name');
+        let dns_name = document.getElementById('dns_name');
+        dns_name.disabled = false;
         dns_name.focus();
+        dns_name.value = "";
+        let ip_addr = document.getElementById('ip_address');
+        ip_addr.value = "";
       });
 
       const closeModal = () => modal.close();
