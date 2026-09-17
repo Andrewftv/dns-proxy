@@ -11,6 +11,7 @@ pub struct LocalConfig {
     dns_srv_addr: std::net::SocketAddr,
     use_doh: bool,
     local_dns_enable: bool,
+    local_domain_name: String,
     /* Statistics part */
     tpool_stat: TPoolStat
 }
@@ -25,6 +26,7 @@ impl LocalConfig {
     const YES_VALUE: &str = "yes";
     const NO_VALUE: &str = "no";
     const LOCAL_DNS_NAME: &str = "local_dns_enable";
+    const LOCAL_DOMAIN_NAME: &str = "domain_name";
 
     pub fn new() -> LocalConfig {
         LocalConfig
@@ -35,6 +37,7 @@ impl LocalConfig {
             /* Use DNS over HTTPS */
             use_doh: true,
             local_dns_enable: true,
+            local_domain_name: Default::default(),
             tpool_stat: TPoolStat::new(DnsProxy::THREAD_POOL_SIZE)
         }
     }
@@ -106,6 +109,11 @@ impl LocalConfig {
         data += if self.local_dns_enable == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
         data += "\"\n";
 
+        data += &("    \"".to_string() + LocalConfig::LOCAL_DOMAIN_NAME + "\": ");
+        data += "\"";
+        data += &self.local_domain_name;
+        data += "\"\n";
+
         data += "}";
 
         log_debug!("{}\n", data);
@@ -129,7 +137,7 @@ impl LocalConfig {
                 }
                 let ip = res.unwrap();
                 self.bind_addr.set_ip(IpAddr::V4(ip));
-            },
+            }
             LocalConfig::LISTEN_PORT_NAME => {
                 let res = value.parse::<u16>();
                 if res.is_err() {
@@ -138,7 +146,7 @@ impl LocalConfig {
                 }
                 let port = res.unwrap();
                 self.bind_addr.set_port(port);
-            },
+            }
             LocalConfig::DNS_SERVER_NAME => {
                 let res = Ipv4Addr::from_str(value);
                 if res.is_err() {
@@ -148,7 +156,7 @@ impl LocalConfig {
                 let ip = res.unwrap();
                 self.dns_srv_addr.set_ip(IpAddr::V4(ip));
                 self.dns_srv_addr.set_port(53);
-            },
+            }
             LocalConfig::USE_DOH_NAME => {
                 if value == LocalConfig::YES_VALUE {
                     self.use_doh = true;
@@ -157,7 +165,7 @@ impl LocalConfig {
                 } else {
                     log_error!("Invalid value\n");
                 }
-            },
+            }
             LocalConfig::LOCAL_DNS_NAME => {
                 if value == LocalConfig::YES_VALUE {
                     self.local_dns_enable = true;
@@ -166,7 +174,10 @@ impl LocalConfig {
                 } else {
                     log_error!("Invalid value\n");
                 }
-            },
+            }
+            LocalConfig::LOCAL_DOMAIN_NAME => {
+                self.local_domain_name = value.to_string();
+            }
             _ => {
                 log_error!("Unknown config: {}\n", name);
             }
@@ -261,5 +272,13 @@ impl LocalConfig {
 
     pub fn get_local_dns_enable(&self) -> bool {
         return self.local_dns_enable;
+    }
+
+    pub fn set_local_domain_name(&mut self, domain_name: &String) {
+        self.local_domain_name = domain_name.to_string();
+    }
+
+    pub fn get_local_domain_name(&self) -> String {
+        return self.local_domain_name.clone();
     }
 }

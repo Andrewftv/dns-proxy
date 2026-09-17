@@ -156,6 +156,12 @@ button {
         </div>
         <br>
         <div id="whole_page">
+          <div>
+            <label for="edit_domain_id">Local network domain:</label>   
+            <input id="edit_domain_id" type="text" name="{#LOCAL_DOMAIN_NAME}" value="{#LOCAL_DOMAIN_NAME}">
+            <button id="save_domain_id" onclick="handle_apply_domain()" type="button" style="padding: 2px 4px;">Apply</button>
+            <p>This domain name will be automatically added after the local name you entered</p>
+          </div>
           <div style="display: flex; justify-content: flex-end; margin-right: 20px;">
             <button id="add_name_id" class="imgbutton">
               <img src="images/add_button.png" alt="Add" width="30" height="30">
@@ -168,7 +174,6 @@ button {
             {#LOCAL_DNS_NAMES}
           </table>
         </div>
-
         <!-- Modal Dialog Element -->
         <dialog id="settingsModal">
         <div class="modal-header">
@@ -190,13 +195,40 @@ button {
     </div>
 
     <script>
+      const toggle = document.getElementById('enable_switch_id');
       /* disable page if the feature disable */
       window.addEventListener("load", () => {
-        if (!document.getElementById('enable_switch_id').checked) {
+        if (!toggle.checked) {
           document.getElementById('whole_page').style.pointerEvents = "none";
           document.getElementById('whole_page').style.opacity = "0.5";
         }
       });
+
+      async function handle_apply_domain() {
+        console.info("--- Apply domain");
+        let domain = document.getElementById('edit_domain_id');
+        if (domain.value === "") {
+          domain.classList.add("input-error"); 
+          domain.classList.add("blink-control");
+          return;
+        } else {
+          domain.classList.remove("input-error"); 
+          domain.classList.remove("blink-control");
+        }
+        if (domain.name === domain.value) {
+          console.info("--- Nothing changed");
+          return;
+        } 
+        console.info("--- domain: " + domain.value);
+        const response = await fetch('/set_domain_name', {
+          method: 'POST',
+          body: ('domain_name=' + domain.value)
+        });
+        if (response.ok) {
+          console.info("--- OK");
+          domain.name = domain.value;
+        }
+      }
 
       async function handle_delete_name(ctrl) {
         console.info("Delete name here:" + ctrl.name);
@@ -208,28 +240,31 @@ button {
           location.reload();
         }
       }
+
       function get_ip_by_name(name) {
         const table = document.getElementById("local_names_table");
         for (let i = 0; i < table.rows.length; i++) {
           const row = table.rows[i];
           if (row.cells[1].textContent === name) {
-            return row.cells[0]. textContent
+            return row.cells[0].textContent;
           }
         }
         return "";
       }
+
       function handle_edit_name(ctrl) {
         console.info("Edit name here:" + ctrl.name);
         modal.showModal();
+        const domain = document.getElementById('edit_domain_id');
         let dns_name = document.getElementById('dns_name');
-        dns_name.value = ctrl.name;
+        let index = ctrl.name.lastIndexOf('.' + domain.name);
+        console.info('index = ' + index);
+        dns_name.value = ctrl.name.slice(0, index);
         dns_name.disabled = true;
         let ip_addr = document.getElementById('ip_address');
         ip_addr.value = get_ip_by_name(ctrl.name);
         ip_addr.focus();
       }
-
-      const toggle = document.getElementById('enable_switch_id');
 
       toggle.addEventListener('change', async (event) => {
         const isEnabled = event.target.checked;
@@ -273,8 +308,10 @@ button {
       modal.addEventListener('close', async () => {
         if (modal.returnValue === 'confirm') {
           console.info('confirm');
-          const dns_name = document.getElementById('dns_name');
+          let dns_name = document.getElementById('dns_name');
           const ip_addr = document.getElementById('ip_address');
+          const domain = document.getElementById('edit_domain_id');
+          dns_name.value += ("." + domain.name);
           modal.returnValue = "";
           const response = await fetch('/new_dns_name', {
             method: 'POST',

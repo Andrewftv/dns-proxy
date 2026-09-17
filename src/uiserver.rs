@@ -52,6 +52,7 @@ impl UiServer {
     const TAG_UPDATE_CHECK: &str = "{#UPDATE_CHECK}";
     const TAG_HIDE_POPUP: &str = "{#HIDE_POPUP}";
     const TAG_LOCAL_DNS: &str = "{#LOCAL_DNS_STATUS}";
+    const TAG_LOCAL_DOMAIN_NAME: &str = "{#LOCAL_DOMAIN_NAME}";
     const TAG_LOCAL_DNS_NAMES: &str = "{#LOCAL_DNS_NAMES}";
     const MSG_FILTER_UP_TO_DATE: &str = "<strong>Filter is up to date</strong>";
     const MSG_FILTER_UPDATED: &str = "<strong>Filter was updated</strong>";
@@ -200,6 +201,9 @@ impl UiServer {
                 let names = filter.prepare_local_dns_table();
                 drop(filter);
                 names
+            }
+            UiServer::TAG_LOCAL_DOMAIN_NAME => {
+                srv_cfg.get_local_domain_name()
             }
             _=> Default::default(),
         };
@@ -436,6 +440,15 @@ impl UiServer {
                     cfg.set_local_dns_enable(res.unwrap());
                     drop(cfg);
                 }
+                "domain_name" => {
+                    if param.value.is_empty() {
+                        log_error!("Empty domain name\n");
+                        return false;
+                    }
+                    let mut cfg = mcfg.lock().unwrap();
+                    cfg.set_local_domain_name(&param.value);
+                    drop(cfg);
+                }
                 _ => {
                     log_error!("Unexpected parameter: {}\n", param.name);
                     return false;
@@ -635,8 +648,7 @@ impl UiServer {
                         let mut response = self.prepare_bin_context(bin_data.len());
                         response.extend(bin_data);
                         response
-                    }
-                    else {
+                    } else {
                         "".to_string().into_bytes()
                     }
                 }
@@ -671,6 +683,7 @@ impl UiServer {
                     self.set_status_code("HTTP/1.1 200 OK");
                     self.prepare_content(None, false, mfilter, mcfg).unwrap()
                 }
+                "POST /set_domain_name HTTP/1.1" |
                 "POST /local_dns HTTP/1.1" => {
                     let opt = self.get_post_params(&request);
                     if opt.is_some() {
