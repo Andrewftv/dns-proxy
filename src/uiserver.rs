@@ -479,19 +479,18 @@ impl UiServer {
 
     fn set_names_enable(params: &Vec<PostParams>, mfilter: &Arc<Mutex<FilterConfig>>) -> bool {
         let mut filter = mfilter.lock().unwrap();
-        filter.clear_enable();
-        let mut whitelist: String = String::default();
         for param in params.iter() {
+            let mut enable = false;
             log_debug!("PARAM: {} VALUE: {}\n", param.name, param.value);
-            let tmp_str = format!("||{}^\n", param.name);
-            whitelist += &tmp_str;
-            filter.set_enable(&param.name);
+            if param.value == "on" {
+                enable = true;
+            } else if param.value == "off" {
+                enable = false;
+            }
+            filter.set_enable(&param.name, enable);
         }
+        filter.create_whitelist();
         drop(filter);
-        let res = fs::write(LOCAL_WHITELIST_FILE_NAME, whitelist);
-        if res.is_err() {
-            log_error!("Error write local white list\n");
-        }
 
         return true;
     }

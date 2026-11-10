@@ -179,19 +179,17 @@ impl FilterConfig {
     }
 
     pub fn prepare_stat_data(&self) -> String {
-        let mut ret_str: String;
+        let mut ret_str: String = Default::default();
         let mut ads_prov: Vec<&BTreeMap<String, Statistics>> = vec![];
         ads_prov.push(&self.ads_provider_list);
         ads_prov.push(&self.ads_provider_wildcard);
-        /* Table header */
-        ret_str = "<tr>\n<th>Enable</th>\n<th>Filter</th>\n<th>Name</th>\n<th>Count</th></tr>\n".to_string();
         /* Table contant */
         for i in 0..ads_prov.len() {
             let prov = ads_prov[i];
             for (key, value) in prov.iter() {
                 if value.requests > 0 {
-                    ret_str += "<tr>\n";
-                    ret_str += "<td><input type=\"checkbox\" name=\"";
+                    ret_str += "<tr><td><label class=\"switch\">\n";
+                    ret_str += "<input type=\"checkbox\" id=\"enable_name_id\" name=\"";
                     ret_str += key;
                     ret_str += "\" ";
                     if value.enable {
@@ -199,7 +197,9 @@ impl FilterConfig {
                     } else {
                         ret_str += "unchecked";
                     }
-                    ret_str += "></td>\n";
+                    ret_str += ">\n";
+                    ret_str += "<span class=\"slider round\"></span></label>";
+                    ret_str += "</td>\n";
                     ret_str += "<td>\n";
                     ret_str += if value.get_filter_type() == FilterType::Global {
                         "Global"
@@ -271,7 +271,7 @@ impl FilterConfig {
         return FilterUpdateStatus::Updated;
     }
 
-    pub fn set_enable(&mut self, key : &String) -> bool {
+    pub fn set_enable(&mut self, key: &String, enable: bool) -> bool {
         log_debug!("Key: '{}'\n", key);
         let mut stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
@@ -281,9 +281,23 @@ impl FilterConfig {
             }
         }
         let stat  = stat_opt.unwrap();
-        stat.set_enable(true);
+        stat.set_enable(enable);
 
         return true;
+    }
+
+    pub fn create_whitelist(&mut self) {
+        let mut whitelist: String = String::default();
+        for (key, value) in self.ads_provider_list.iter_mut() {
+            if value.enable {
+                let tmp_str = format!("||{}^\n", key);
+                whitelist += &tmp_str;
+            }
+        }
+        let res = fs::write(LOCAL_WHITELIST_FILE_NAME, whitelist);
+        if res.is_err() {
+            log_error!("Error write local white list\n");
+        }
     }
 
     pub fn clear_enable(&mut self) {
