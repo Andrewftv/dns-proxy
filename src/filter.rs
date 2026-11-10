@@ -357,12 +357,16 @@ impl FilterConfig {
         self.local_names.remove(name);
     }
 
-    pub fn search(&mut self, key : &String, resolve_local: bool) -> (SearchResult, u64) {
+    pub fn search(&mut self, key: &String, resolve_local: bool, local_domain: &String) -> (SearchResult, u64) {
         if resolve_local {
-            let loc_opt = self.local_names.get(key);
-            if loc_opt.is_some() {
+            let parts: Vec<&str> = key.split('.').collect();
+            if parts[parts.len() - 1] == local_domain {
                 return (SearchResult::LocalName, 0);
             }
+            //let loc_opt = self.local_names.get(key);
+            //if loc_opt.is_some() {
+            //    return (SearchResult::LocalName, 0);
+            //}
         }
 
         let stat_opt = self.ads_provider_list.get_mut(key);

@@ -198,10 +198,11 @@ impl DnsProxy {
         let dns_srv_addr = cfg.get_dns_srv_addr();
         let use_doh = cfg.get_use_doh();
         let resolve_local = cfg.get_local_dns_enable();
+        let local_domain = cfg.get_local_domain_name();
         drop(cfg);
         let mut flt = filter_ref.lock().unwrap();
         let mut dns_response : Vec<u8> = vec![];
-        let (is_found, reject_count) = flt.search(&asked_name, resolve_local);
+        let (is_found, reject_count) = flt.search(&asked_name, resolve_local, &local_domain);
         let mut log_string: String = Default::default();
         if is_found == SearchResult::NotFound || reject_count == 1 {
             //log_info!("Ask for: {}", asked_name);
