@@ -4,6 +4,18 @@
     <meta charset="utf-8">
     <title>DNS AdCleaner</title>
     <link rel="stylesheet" href="classes.css" type="text/css">
+    <style>
+  /* Define the style for your custom highlight */
+    ::highlight(search-match) {
+      background-color: yellow;
+      color: black;
+    }
+    ::highlight(current-match) {
+      background-color: orange;
+      color: black;
+      font-weight: bold;
+    }
+  </style>
   </head>
   <body>
     <div class="container">
@@ -17,14 +29,113 @@
       <div class="header">
         <h2>Reject statistics</h2>
       </div>
-      <div class="contant">
-        <form action="enable_names" method="post">
+        <div class="contant" id="searchableContainer" style="display: flex; gap: 15px;">
+        <div>
+          <form action="enable_names" method="post">
           <table>
             {#REJECT_STATISTICS}
           </table>
           <button class="mysubmit" style="margin: 10px" id="enable_names_id">Send</button>
         </form>
+        </div>
+        <div class="search-box" style="padding: 15px;">
+          <input type="text" id="divSearchInput" placeholder="Find text...">
+          <button id="searchBtn">Find Next</button>
+          <span id="matchCount"></span>
+        </div>
       </div>
     </div>
+    <script>
+      const input = document.getElementById('divSearchInput');
+      const btn = document.getElementById('searchBtn');
+      const container = document.getElementById('searchableContainer');
+      const matchCountSpan = document.getElementById('matchCount');
+
+      let matches = [];
+      let currentMatchIndex = -1;
+
+      // 1. Find all text nodes inside the target div
+      function getTextNodes(node) {
+        const textNodes = [];
+        const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null, false);
+        let currentNode;
+        while (currentNode = walk.nextNode()) {
+          textNodes.push(currentNode);
+        }
+        return textNodes;
+      }
+      // 2. Perform the scoped search
+      function performSearch() {
+        // Clear previous highlights
+        CSS.highlights.clear();
+        matches = [];
+        currentMatchIndex = -1;
+        matchCountSpan.textContent = "";
+
+        const query = input.value.toLowerCase();
+        if (!query) return;
+
+        const textNodes = getTextNodes(container);
+        const ranges = [];
+
+        textNodes.forEach(node => {
+          const text = node.textContent.toLowerCase();
+          let startIdx = text.indexOf(query);
+
+          while (startIdx !== -1) {
+            const range = new Range();
+            range.setStart(node, startIdx);
+            range.setEnd(node, startIdx + query.length);
+            ranges.push(range);
+            
+            // Find next occurrence in the same text node
+            startIdx = text.indexOf(query, startIdx + query.length);
+          }
+        });
+
+        if (ranges.length > 0) {
+          matches = ranges;
+          
+          // Register all matches to the CSS Highlight API
+          const searchMatchHighlight = new Highlight(...ranges);
+          CSS.highlights.set("search-match", searchMatchHighlight);
+          
+          // Go to first match
+          goToMatch(0);
+        } else {
+          matchCountSpan.textContent = "0 matches";
+        }
+      }
+      // 3. Cycle through matches (Find Next functionality)
+    function goToMatch(index) {
+      if (matches.length === 0) return;
+
+      currentMatchIndex = index;
+      
+      // Update counter text
+      matchCountSpan.textContent = `${currentMatchIndex + 1} of ${matches.length}`;
+
+      // Highlight the active single match differently
+      const currentRange = matches[currentMatchIndex];
+      const currentHighlight = new Highlight(currentRange);
+      CSS.highlights.set("current-match", currentHighlight);
+
+      // Smoothly scroll the matched item into view
+      currentRange.startContainer.parentElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+
+    // Event Listeners
+    input.addEventListener('input', performSearch);
+    
+    btn.addEventListener('click', () => {
+      if (matches.length === 0) return;
+      let nextIndex = currentMatchIndex + 1;
+      if (nextIndex >= matches.length) nextIndex = 0; // Loop back to start
+      goToMatch(nextIndex);
+    });
+    </script>
   </body>
 </html>
