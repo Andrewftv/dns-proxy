@@ -1,6 +1,8 @@
-use std::{fs, env};
+use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use rusqlite::Connection;
+use crate::confdb::{init_conf_db, get_global_config_value, update_global_config_value};
 use crate::{log_error, log_debug, log_info};
 use crate::tpool::TPoolStat;
 use crate::DnsProxy;
@@ -12,24 +14,30 @@ pub struct LocalConfig {
     use_doh: bool,
     local_dns_enable: bool,
     local_domain_name: String,
+    db_conn: Connection,
     /* Statistics part */
     tpool_stat: TPoolStat
 }
 
 impl LocalConfig {
     const PRODUCT_VERSION: &str = "1.2";
-    const CFG_FILE_NAME: &str = "config.json";
-    const LISTEN_ADDR_NAME: &str = "listen_address";
-    const LISTEN_PORT_NAME: &str = "listen_port";
-    const DNS_SERVER_NAME: &str = "DNS_server";
-    const USE_DOH_NAME: &str = "use_DoH";
+    //const CFG_FILE_NAME: &str = "config.json";
+    pub const LISTEN_ADDR_NAME: &str = "listen_address";
+    pub const LISTEN_PORT_NAME: &str = "listen_port";
+    pub const DNS_SERVER_NAME: &str = "DNS_server";
+    pub const USE_DOH_NAME: &str = "use_DoH";
     const YES_VALUE: &str = "yes";
     const NO_VALUE: &str = "no";
-    const LOCAL_DNS_NAME: &str = "local_dns_enable";
-    const LOCAL_DOMAIN_NAME: &str = "domain_name";
+    pub const LOCAL_DNS_NAME: &str = "local_dns_enable";
+    pub const LOCAL_DOMAIN_NAME: &str = "domain_name";
 
-    pub fn new() -> LocalConfig {
-        LocalConfig
+    pub fn new() -> Result<Self, rusqlite::Error> {
+        let res = init_conf_db();
+        if res.is_err() {
+            return Err(res.err().unwrap());
+        }
+        let conn = res.unwrap();
+        Ok(LocalConfig
         {
             bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
             /* Default google DNS */
@@ -38,9 +46,14 @@ impl LocalConfig {
             use_doh: true,
             local_dns_enable: true,
             local_domain_name: Default::default(),
-            tpool_stat: TPoolStat::new(DnsProxy::THREAD_POOL_SIZE)
-        }
+            tpool_stat: TPoolStat::new(DnsProxy::THREAD_POOL_SIZE),
+            db_conn: conn
+        })
     }
+
+    //pub fn get_db_connection(&self) -> &Connection {
+    //    return &self.db_conn;
+    //}
 
     pub fn parse_cmd_params(&mut self) {
         let args: Vec<String> = env::args().collect();
@@ -52,7 +65,7 @@ impl LocalConfig {
                     if res.is_ok() {
                         let port_no: u16 = res.unwrap();
                         log_info!("Set DNS port from command line parameter: {}\n", port_no);
-                        self.set_bind_port(port_no);
+                        self.set_bind_port(port_no, false);
                     }
                     break;
                 }
@@ -81,6 +94,7 @@ impl LocalConfig {
         return self.tpool_stat.get_jobs(id);
     }
 
+    /*
     pub fn write_config(&self) -> bool {
 
         let mut data: String = "{\n".to_string();
@@ -126,6 +140,7 @@ impl LocalConfig {
 
         return true;
     }
+    */
 
     fn set_config_values(&mut self, name: &str, value: &str) -> bool {
         match name {
@@ -187,7 +202,34 @@ impl LocalConfig {
 
     pub fn read_config(&mut self) -> bool {
         log_debug!("Reading configuration\n");
-        let res = fs::read_to_string("config.json");
+
+        let mut val: String = Default::default();
+        if get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_ADDR_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::LISTEN_ADDR_NAME, val);
+            self.set_config_values(LocalConfig::LISTEN_ADDR_NAME, &val);
+        }
+        if get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::LISTEN_PORT_NAME, val);
+            self.set_config_values(LocalConfig::LISTEN_PORT_NAME, &val);
+        }
+        if get_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::DNS_SERVER_NAME, val);
+            self.set_config_values(LocalConfig::DNS_SERVER_NAME, &val);
+        }
+        if get_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::USE_DOH_NAME, val);
+            self.set_config_values(LocalConfig::USE_DOH_NAME, &val);
+        }
+        if get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::LOCAL_DNS_NAME, val);
+            self.set_config_values(LocalConfig::LOCAL_DNS_NAME, &val);
+        }
+        if get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), &mut val) {
+            log_debug!("Read parameter {} value {}\n", LocalConfig::LOCAL_DOMAIN_NAME, val);
+            self.set_config_values(LocalConfig::LOCAL_DOMAIN_NAME, &val);
+        }
+
+        /*let res = fs::read_to_string("config.json");
         if res.is_err() {
             log_error!("Unable to open configuration file\n");
             return false;
@@ -238,12 +280,16 @@ impl LocalConfig {
 
             self.set_config_values(name, value);
         }
-        log_debug!("Reading configuration done\n");
+        log_debug!("Reading configuration done\n");*/
         return true;
     }
 
-    pub fn set_bind_port(&mut self, port: u16) {
+    pub fn set_bind_port(&mut self, port: u16, keep_it: bool) {
         self.bind_addr.set_port(port);
+        if keep_it {
+            log_debug!("Set param {} to {}\n", LocalConfig::LISTEN_PORT_NAME, port);
+            update_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &port.to_string());
+        }
     }
 
     pub fn get_bind_addr(&self) -> std::net::SocketAddr {
@@ -256,6 +302,9 @@ impl LocalConfig {
 
     pub fn set_use_doh(&mut self, value: bool) {
         self.use_doh = value;
+        let val = if value {"yes"} else {"no"};
+        log_debug!("Set param {} to {}\n", LocalConfig::USE_DOH_NAME, val);
+        update_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &val.to_string());
     }
 
     pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
@@ -264,10 +313,15 @@ impl LocalConfig {
 
     pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) {
         self.dns_srv_addr = addr;
+        log_debug!("Set param {} to {}\n", LocalConfig::DNS_SERVER_NAME, addr.to_string());
+        update_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &addr.to_string());
     }
 
     pub fn set_local_dns_enable(&mut self, enable: bool) {
         self.local_dns_enable = enable;
+        let val = if enable {"yes"} else {"no"};
+        log_debug!("Set param {} to {}\n", LocalConfig::LOCAL_DNS_NAME, val);
+        update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &val.to_string());
     }
 
     pub fn get_local_dns_enable(&self) -> bool {
@@ -276,6 +330,7 @@ impl LocalConfig {
 
     pub fn set_local_domain_name(&mut self, domain_name: &String) {
         self.local_domain_name = domain_name.to_string();
+        update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), domain_name);
     }
 
     pub fn get_local_domain_name(&self) -> String {

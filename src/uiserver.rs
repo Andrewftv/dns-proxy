@@ -456,9 +456,9 @@ impl UiServer {
             };
         }
 
-        let cfg = mcfg.lock().unwrap();
-        cfg.write_config();
-        drop(cfg);
+        //let cfg = mcfg.lock().unwrap();
+        //cfg.write_config();
+        //drop(cfg);
 
         return true;
     }

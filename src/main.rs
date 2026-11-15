@@ -3,6 +3,7 @@ mod filter;
 mod tpool;
 mod uiserver;
 mod config;
+mod confdb;
 
 use std::{io::{Error, ErrorKind}, net::{Ipv4Addr, UdpSocket}, str, thread::{self, JoinHandle}, time::Duration};
 #[allow(unused_imports)]
@@ -368,7 +369,11 @@ fn main() -> Result<(), std::io::Error>
 {
     let (tx_proxy, rx_proxy) = mpsc::channel();
     let (tx_ui, rx_ui) = mpsc::channel();
-    let mut cfg = LocalConfig::new();
+    let res = LocalConfig::new();
+    if res.is_err() {
+        return Err(Error::new(ErrorKind::InvalidFilename, "Unable to connect to DB"));
+    }
+    let mut cfg = res.unwrap();
     cfg.read_config();
     // Force set listen port. Need for debug environment
     cfg.parse_cmd_params();
