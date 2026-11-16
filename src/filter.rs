@@ -17,7 +17,6 @@ use crate::confdb::{sqldb_get_ip_for_local_name, sqldb_remove_local_name, sqldb_
 pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
 pub const LOCAL_WHITELIST_FILE_NAME: &str = "local-whitelist.txt";
-//onst LOCAL_NAMES_FILE_NAME: &str = "local-names.txt";
 
 #[derive(Clone, PartialEq, Copy)]
 enum FilterType {
@@ -52,7 +51,6 @@ impl Statistics {
         self.requests += 1;
         return self.requests;
     }
-    #[allow(dead_code)]
     pub fn get_filter_type(&self) -> FilterType {
         return self.filter_type;
     }
@@ -68,8 +66,7 @@ pub enum FilterUpdateStatus {
 
 pub struct FilterConfig {
     ads_provider_list: BTreeMap<String, Statistics>,
-    ads_provider_wildcard: BTreeMap<String, Statistics>,
-    //local_names: BTreeMap<String, Ipv4Addr>,
+    //ads_provider_wildcard: BTreeMap<String, Statistics>,
     update_status: FilterUpdateStatus,
 }
 
@@ -85,8 +82,7 @@ impl FilterConfig {
         FilterConfig
         {
             ads_provider_list: BTreeMap::new(),
-            ads_provider_wildcard: BTreeMap::new(),
-            //local_names: BTreeMap::new(),
+            //ads_provider_wildcard: BTreeMap::new(),
             update_status: FilterUpdateStatus::Unchanged,
         }
     }
@@ -160,7 +156,7 @@ impl FilterConfig {
         let mut ret_str: String = Default::default();
         let mut ads_prov: Vec<&BTreeMap<String, Statistics>> = vec![];
         ads_prov.push(&self.ads_provider_list);
-        ads_prov.push(&self.ads_provider_wildcard);
+        //ads_prov.push(&self.ads_provider_wildcard);
         /* Table contant */
         for i in 0..ads_prov.len() {
             let prov = ads_prov[i];
@@ -200,7 +196,7 @@ impl FilterConfig {
     }
 
     pub fn get_num_entries(&self) -> usize {
-            return self.ads_provider_list.len() + self.ads_provider_wildcard.len();
+            return self.ads_provider_list.len()/* + self.ads_provider_wildcard.len()*/;
     }
 
     pub fn check_update() -> FilterUpdateStatus {
@@ -251,12 +247,12 @@ impl FilterConfig {
 
     pub fn set_enable(&mut self, key: &String, enable: bool) -> bool {
         log_debug!("Key: '{}'\n", key);
-        let mut stat_opt = self.ads_provider_list.get_mut(key);
+        let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
-            stat_opt = self.ads_provider_wildcard.get_mut(key);
-            if stat_opt.is_none() {
-                return false;
-            }
+            //stat_opt = self.ads_provider_wildcard.get_mut(key);
+            //if stat_opt.is_none() {
+            return false;
+            //}
         }
         let stat  = stat_opt.unwrap();
         stat.set_enable(enable);
@@ -282,11 +278,11 @@ impl FilterConfig {
         for (_key, value) in self.ads_provider_list.iter_mut() {
             value.set_enable(false);
         }
-        for (_key, value) in self.ads_provider_wildcard.iter_mut() {
-            value.set_enable(false);
-        }
+        //for (_key, value) in self.ads_provider_wildcard.iter_mut() {
+        //    value.set_enable(false);
+        //}
     }
-
+    /*
     pub fn search_wildcard(&mut self, name: &String) -> (SearchResult, u64) {
         for (key, stat) in self.ads_provider_wildcard.iter_mut() {
             let parts: Vec<&str> = key.split('*').collect();
@@ -336,6 +332,7 @@ impl FilterConfig {
 
         return (SearchResult::NotFound, 0);
     }
+    */
 
     pub fn get_local_name(conn_db: &Connection, key: &String) -> Option<Ipv4Addr> {
         let res = sqldb_get_ip_for_local_name(conn_db, key);
@@ -377,7 +374,8 @@ impl FilterConfig {
 
         let stat_opt = self.ads_provider_list.get_mut(key);
         if stat_opt.is_none() {
-            return self.search_wildcard(key)
+            //return self.search_wildcard(key)
+            return (SearchResult::NotFound, 0);
         }
         let stat  = stat_opt.unwrap();
         if stat.enable {
@@ -390,7 +388,7 @@ impl FilterConfig {
 
     pub fn reload_filter(&mut self) -> Result<(), std::io::Error> {
         self.ads_provider_list.clear();
-        self.ads_provider_wildcard.clear();
+        //self.ads_provider_wildcard.clear();
 
         return self.create_black_list_map();
     }
@@ -459,14 +457,14 @@ impl FilterConfig {
                     _ => FilterType::None
                 };
                 if single_line.find('*').is_some() && index != 2 {
-                    //log_debug!("Wild card found: {}\n", single_line);
-                    if single_line.contains("[") {
-                        continue;
-                    }
-                    log_debug!("Add wildcard: {}\n", single_line);
-                    if self.ads_provider_wildcard.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
-                        log_info!("Dublicated wildcard {}\n", single_line);
-                    }
+                    log_debug!("Wild card found: {}\n", single_line);
+                    //if single_line.contains("[") {
+                    //    continue;
+                    //}
+                    //log_debug!("Add wildcard: {}\n", single_line);
+                    //if self.ads_provider_wildcard.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
+                    //    log_info!("Dublicated wildcard {}\n", single_line);
+                    //}
                     continue;
                 }
 
@@ -479,13 +477,13 @@ impl FilterConfig {
                 } else {
                     // White list
                     log_debug!("White list entry: {}\n", single_line);
-                    let mut opt = self.ads_provider_list.get_mut(&single_line);
+                    let opt = self.ads_provider_list.get_mut(&single_line);
                     if opt.is_none() {
-                        opt = self.ads_provider_wildcard.get_mut(&single_line);
-                        if opt.is_none() {
-                            log_debug!("Entry not found\n");
-                            continue;
-                        }
+                        //opt = self.ads_provider_wildcard.get_mut(&single_line);
+                        //if opt.is_none() {
+                        log_debug!("Entry not found\n");
+                        continue;
+                        //}
                     }
                     let stat = opt.unwrap();
                     stat.set_enable(true);
