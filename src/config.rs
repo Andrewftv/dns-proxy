@@ -2,7 +2,7 @@ use std::env;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use rusqlite::Connection;
-use crate::confdb::{init_conf_db, get_global_config_value, update_global_config_value};
+use crate::confdb::{sqldb_init_conf_db, sqldb_get_global_config_value, sqldb_update_global_config_value};
 use crate::{log_error, log_debug, log_info};
 use crate::tpool::TPoolStat;
 use crate::DnsProxy;
@@ -21,27 +21,27 @@ pub struct LocalConfig {
 
 impl LocalConfig {
     const PRODUCT_VERSION: &str = "1.2";
-    //const CFG_FILE_NAME: &str = "config.json";
     pub const LISTEN_ADDR_NAME: &str = "listen_address";
     pub const LISTEN_PORT_NAME: &str = "listen_port";
     pub const DNS_SERVER_NAME: &str = "DNS_server";
     pub const USE_DOH_NAME: &str = "use_DoH";
-    const YES_VALUE: &str = "yes";
-    const NO_VALUE: &str = "no";
+    pub const YES_VALUE: &str = "yes";
+    pub const NO_VALUE: &str = "no";
     pub const LOCAL_DNS_NAME: &str = "local_dns_enable";
     pub const LOCAL_DOMAIN_NAME: &str = "domain_name";
+    pub const DNS_PORT_VALUE: u16 = 53;
 
     pub fn new() -> Result<Self, rusqlite::Error> {
-        let res = init_conf_db();
+        let res = sqldb_init_conf_db();
         if res.is_err() {
             return Err(res.err().unwrap());
         }
         let conn = res.unwrap();
         Ok(LocalConfig
         {
-            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 53),
+            bind_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), LocalConfig::DNS_PORT_VALUE),
             /* Default google DNS */
-            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53),
+            dns_srv_addr: std::net::SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), LocalConfig::DNS_PORT_VALUE),
             /* Use DNS over HTTPS */
             use_doh: true,
             local_dns_enable: true,
@@ -51,9 +51,9 @@ impl LocalConfig {
         })
     }
 
-    //pub fn get_db_connection(&self) -> &Connection {
-    //    return &self.db_conn;
-    //}
+    pub fn get_db_connection(&self) -> &Connection {
+        return &self.db_conn;
+    }
 
     pub fn parse_cmd_params(&mut self) {
         let args: Vec<String> = env::args().collect();
@@ -93,54 +93,6 @@ impl LocalConfig {
     pub fn get_jobs(&self, id: usize) -> u64 {
         return self.tpool_stat.get_jobs(id);
     }
-
-    /*
-    pub fn write_config(&self) -> bool {
-
-        let mut data: String = "{\n".to_string();
-        data += &("    \"".to_string() + LocalConfig::LISTEN_ADDR_NAME + "\": ");
-        data += "\"";
-        data += &self.bind_addr.ip().to_string();
-        data += "\",\n";
-
-        data += &("    \"".to_string() + LocalConfig::LISTEN_PORT_NAME +"\": ");
-        data += "\"";
-        data += &self.bind_addr.port().to_string();
-        data += "\",\n";
-
-        data += &("    \"".to_string() + LocalConfig::DNS_SERVER_NAME + "\": ");
-        data += "\"";
-        data += &self.dns_srv_addr.ip().to_string();
-        data += "\",\n";
-
-        data += &("    \"".to_string() + LocalConfig::USE_DOH_NAME + "\": ");
-        data += "\"";
-        data += if self.use_doh == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
-        data += "\",\n"; 
-
-        data += &("    \"".to_string() + LocalConfig::LOCAL_DNS_NAME + "\": ");
-        data += "\"";
-        data += if self.local_dns_enable == true {LocalConfig::YES_VALUE} else {LocalConfig::NO_VALUE};
-        data += "\"\n";
-
-        data += &("    \"".to_string() + LocalConfig::LOCAL_DOMAIN_NAME + "\": ");
-        data += "\"";
-        data += &self.local_domain_name;
-        data += "\"\n";
-
-        data += "}";
-
-        log_debug!("{}\n", data);
-
-        let res = fs::write(LocalConfig::CFG_FILE_NAME, data);
-        if res.is_err() {
-            log_error!("Error write configuration file\n");
-            return false;
-        }
-
-        return true;
-    }
-    */
 
     fn set_config_values(&mut self, name: &str, value: &str) -> bool {
         match name {
@@ -202,85 +154,31 @@ impl LocalConfig {
 
     pub fn read_config(&mut self) -> bool {
         log_debug!("Reading configuration\n");
-
         let mut val: String = Default::default();
-        if get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_ADDR_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_ADDR_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::LISTEN_ADDR_NAME, val);
             self.set_config_values(LocalConfig::LISTEN_ADDR_NAME, &val);
         }
-        if get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::LISTEN_PORT_NAME, val);
             self.set_config_values(LocalConfig::LISTEN_PORT_NAME, &val);
         }
-        if get_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::DNS_SERVER_NAME, val);
             self.set_config_values(LocalConfig::DNS_SERVER_NAME, &val);
         }
-        if get_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::USE_DOH_NAME, val);
             self.set_config_values(LocalConfig::USE_DOH_NAME, &val);
         }
-        if get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::LOCAL_DNS_NAME, val);
             self.set_config_values(LocalConfig::LOCAL_DNS_NAME, &val);
         }
-        if get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), &mut val) {
+        if sqldb_get_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), &mut val) {
             log_debug!("Read parameter {} value {}\n", LocalConfig::LOCAL_DOMAIN_NAME, val);
             self.set_config_values(LocalConfig::LOCAL_DOMAIN_NAME, &val);
         }
-
-        /*let res = fs::read_to_string("config.json");
-        if res.is_err() {
-            log_error!("Unable to open configuration file\n");
-            return false;
-        }
-        let cfg_file = res.unwrap();
-        let mut opt = cfg_file.find('{');
-        if opt.is_none() {
-            log_error!("Invalid json file. There is no \"{\"\n");
-            return false;
-        }
-        let mut name: &str;
-        let mut value: &str;
-        let mut curr_pos = opt.unwrap() + 1;
-
-        while let Some(pos) = cfg_file[curr_pos..].find('"') {
-            let begin = pos + curr_pos + 1;
-            opt = cfg_file[begin..].find('"');
-            if opt.is_none() {
-                log_error!("Invalid json file\n");
-                return false;
-            }
-            let end = opt.unwrap() + begin;
-            name = &cfg_file[begin..end];
-
-            curr_pos = end + 1;
-
-            if cfg_file[curr_pos..].find(':').is_none() {
-                log_error!("Delimeter is not found\n");
-                return false;
-            }
-            opt = cfg_file[curr_pos..].find('"');
-            if opt.is_none() {
-                log_error!("Invalid json file\n");
-                return false;
-            }
-            let begin = opt.unwrap() + curr_pos + 1;
-            opt = cfg_file[begin..].find('"');
-            if opt.is_none() {
-                log_error!("Invalid json file\n");
-                return false;
-            }
-            let end = opt.unwrap() + begin;
-            value = &cfg_file[begin..end];
-
-            log_info!("name: {} value: {}\n", name, value);
-
-            curr_pos = end + 1;
-
-            self.set_config_values(name, value);
-        }
-        log_debug!("Reading configuration done\n");*/
         return true;
     }
 
@@ -288,7 +186,7 @@ impl LocalConfig {
         self.bind_addr.set_port(port);
         if keep_it {
             log_debug!("Set param {} to {}\n", LocalConfig::LISTEN_PORT_NAME, port);
-            update_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &port.to_string());
+            sqldb_update_global_config_value(&self.db_conn, &LocalConfig::LISTEN_PORT_NAME.to_string(), &port.to_string());
         }
     }
 
@@ -304,7 +202,7 @@ impl LocalConfig {
         self.use_doh = value;
         let val = if value {"yes"} else {"no"};
         log_debug!("Set param {} to {}\n", LocalConfig::USE_DOH_NAME, val);
-        update_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &val.to_string());
+        sqldb_update_global_config_value(&self.db_conn, &LocalConfig::USE_DOH_NAME.to_string(), &val.to_string());
     }
 
     pub fn get_dns_srv_addr(&self) -> std::net::SocketAddr {
@@ -314,14 +212,14 @@ impl LocalConfig {
     pub fn set_dns_srv_addr(&mut self, addr: std::net::SocketAddr) {
         self.dns_srv_addr = addr;
         log_debug!("Set param {} to {}\n", LocalConfig::DNS_SERVER_NAME, addr.to_string());
-        update_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &addr.to_string());
+        sqldb_update_global_config_value(&self.db_conn, &LocalConfig::DNS_SERVER_NAME.to_string(), &addr.to_string());
     }
 
     pub fn set_local_dns_enable(&mut self, enable: bool) {
         self.local_dns_enable = enable;
         let val = if enable {"yes"} else {"no"};
         log_debug!("Set param {} to {}\n", LocalConfig::LOCAL_DNS_NAME, val);
-        update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &val.to_string());
+        sqldb_update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DNS_NAME.to_string(), &val.to_string());
     }
 
     pub fn get_local_dns_enable(&self) -> bool {
@@ -330,7 +228,7 @@ impl LocalConfig {
 
     pub fn set_local_domain_name(&mut self, domain_name: &String) {
         self.local_domain_name = domain_name.to_string();
-        update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), domain_name);
+        sqldb_update_global_config_value(&self.db_conn, &LocalConfig::LOCAL_DOMAIN_NAME.to_string(), domain_name);
     }
 
     pub fn get_local_domain_name(&self) -> String {

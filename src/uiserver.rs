@@ -6,7 +6,11 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Local};
+use rusqlite::Connection;
 use std::fs;
+
+use crate::confdb::sqldb_get_local_names;
+use crate::confdb::LocalName;
 
 use crate::{log_error, log_debug, log_info};
 use crate::filter::{FilterConfig, FilterUpdateStatus};
@@ -197,9 +201,7 @@ impl UiServer {
                 }
             }
             UiServer::TAG_LOCAL_DNS_NAMES => {
-                let filter = mfilter.lock().unwrap();
-                let names = filter.prepare_local_dns_table();
-                drop(filter);
+                let names = UiServer::prepare_local_dns_table(srv_cfg.get_db_connection());
                 names
             }
             UiServer::TAG_LOCAL_DOMAIN_NAME => {
@@ -209,6 +211,39 @@ impl UiServer {
         };
 
         return ret_string;
+    }
+
+    fn prepare_local_dns_table(conn: &Connection) -> String {
+        let mut ret_str: String = Default::default();
+
+        let res = sqldb_get_local_names(conn);
+        if res.is_err() {
+            log_error!("Unable to get local names. Error: {}\n", res.err().unwrap());
+            return ret_str;
+        }
+        let names: Vec<LocalName> = res.unwrap();
+
+        for local_name in names.iter() {
+            ret_str += "<tr><td>";
+            ret_str += &local_name.address;
+            ret_str += "</td><td>";
+            ret_str += &local_name.name;
+            ret_str += "</td><td>";
+            ret_str += "<div style=\"display: flex; justify-content: flex-end; width: 100%; background-color: inherit;\">";
+            ret_str += "<button type=\"button\" class=\"imgbutton\" name=\"";
+            ret_str += &local_name.name;
+            ret_str += "\" onclick=\"handle_edit_name(this)\">";
+            ret_str += "<img src=\"images/edit_button.png\" alt=\"Edit\" width=\"30\" height=\"30\"></button>";
+
+            ret_str += "<button type=\"button\" class=\"imgbutton\" name=\"";
+            ret_str += &local_name.name;
+            ret_str += "\" onclick=\"handle_delete_name(this)\">";
+            ret_str += "<img src=\"images/delete_button.png\" alt=\"Delete\" width=\"30\" height=\"30\"></button>";
+            ret_str += "</div>";
+            ret_str +="</td></tr>";
+        }
+
+        return ret_str;
     }
 
     fn replace_tag(&mut self, tag: &String, contents: &String, mfilter: &Arc<Mutex<FilterConfig>>, srv_cfg: &LocalConfig) -> String {
@@ -456,10 +491,6 @@ impl UiServer {
             };
         }
 
-        //let cfg = mcfg.lock().unwrap();
-        //cfg.write_config();
-        //drop(cfg);
-
         return true;
     }
 
@@ -656,10 +687,9 @@ impl UiServer {
                     if opt.is_some() {
                         let params = opt.unwrap();
                         if params.len() == 1 && params[0].name == "delete_dns_name" {
-                            let mut filter = mfilter.lock().unwrap();
-                            filter.remove_local_name(&params[0].value);
-                            filter.write_local_dns_file();
-                            drop(filter);
+                            let cfg = mcfg.lock().unwrap();
+                            FilterConfig::remove_local_name(cfg.get_db_connection(), &params[0].value);
+                            drop(cfg);
                         }
                     }
                     self.set_status_code("HTTP/1.1 200 OK");
@@ -672,10 +702,9 @@ impl UiServer {
                         if params.len() == 2 && params[0].name == "local_dns_name" && params[1].name == "local_ip_addr" {
                             let res = params[1].value.parse::<Ipv4Addr>();
                             if res.is_ok() {
-                                let mut filter = mfilter.lock().unwrap();
-                                filter.set_local_name(&params[0].value, res.unwrap());
-                                filter.write_local_dns_file();
-                                drop(filter);
+                                let cfg = mcfg.lock().unwrap();
+                                FilterConfig::set_local_name(cfg.get_db_connection(), &params[0].value, res.unwrap());
+                                drop(cfg);
                             }
                         }
                     }

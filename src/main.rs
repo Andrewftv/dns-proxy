@@ -221,9 +221,9 @@ impl DnsProxy {
             }
         } else if is_found == SearchResult::LocalName {
             let mut response: [u8; 512] = [0; 512];
-            let flt = filter_ref.lock().unwrap();
-            let opt = flt.get_local_name(&asked_name);
-            drop(flt);
+            let cfg: std::sync::MutexGuard<'_, LocalConfig> = cfg_ref.lock().unwrap();
+            let opt = FilterConfig::get_local_name(cfg.get_db_connection(), &asked_name);
+            drop(cfg);
             if opt.is_none() {
                 log_debug!("Some thing went wrong. Name: {} not found\n", asked_name);
                 return Ok(());
@@ -384,12 +384,6 @@ fn main() -> Result<(), std::io::Error>
     if res.is_err() {
         log_error!("Create filter failed: {}\n", res.err().unwrap());
         log_info!("Start with empty filter\n");
-    }
-    let res = flt.create_local_names_map();
-    if res.is_err() {
-        log_error!("Create local names list failed: {}\n", res.err().unwrap());
-        log_info!("Start with empty local na
-        mes list\n");
     }
     let filter = Arc::new(Mutex::new(flt));
     log_info!("Filter was created\n");
