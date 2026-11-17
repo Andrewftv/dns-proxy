@@ -1,6 +1,5 @@
-use std::{io, fs};
+use std::{io};
 use std::io::{BufRead, Error, ErrorKind};
-use std::collections::BTreeMap;
 use std::str::{self};
 use std::net::Ipv4Addr;
 use crate::log_info;
@@ -12,14 +11,15 @@ use std::fs::File;
 use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 
-use crate::confdb::{sqldb_get_ip_for_local_name, sqldb_remove_local_name, sqldb_insert_local_name, sqldb_update_local_name};
+use crate::confdb::{sqldb_get_ip_for_local_name, sqldb_remove_local_name, sqldb_insert_local_name, sqldb_update_local_name,
+    sqldb_insert_filter_entry, sqldb_clean_filter, sqldb_get_filter_rows_count, sqldb_set_name_enable, sqldb_clear_all_enable,
+    sqldb_is_name_blocked};
 
 pub const BLOCKLIST_FILE_NAME: &str = "blocklist.txt";
 const LOCAL_BLOCKLIST_FILE_NAME: &str = "local-blocklist.txt";
-pub const LOCAL_WHITELIST_FILE_NAME: &str = "local-whitelist.txt";
 
 #[derive(Clone, PartialEq, Copy)]
-enum FilterType {
+pub enum FilterType {
     Global,
     Local,
     None
@@ -33,27 +33,11 @@ pub enum SearchResult {
 }
 
 #[derive(Clone)]
-struct Statistics {
-    requests : u64,
-    enable : bool,
-    filter_type: FilterType,
-}
-
-impl Statistics {
-    fn new(ftype: FilterType) -> Self {
-        Statistics { requests: 0, enable: false, filter_type: ftype }
-    }
-
-    pub fn set_enable(&mut self, enable: bool) {
-        self.enable = enable;
-    }
-    pub fn inc_request_count(&mut self) -> u64 {
-        self.requests += 1;
-        return self.requests;
-    }
-    pub fn get_filter_type(&self) -> FilterType {
-        return self.filter_type;
-    }
+pub struct FilterRow {
+    pub name: String,
+    pub requests : u64,
+    pub enable : bool,
+    pub filter_type: i32,
 }
 
 #[derive(PartialEq)]
@@ -65,9 +49,6 @@ pub enum FilterUpdateStatus {
 }
 
 pub struct FilterConfig {
-    ads_provider_list: BTreeMap<String, Statistics>,
-    //ads_provider_wildcard: BTreeMap<String, Statistics>,
-    update_status: FilterUpdateStatus,
 }
 
 impl FilterConfig {
@@ -76,16 +57,6 @@ impl FilterConfig {
     const BAD_PARAM_TAG: &str = "$badfilter";
     const THIRD_PARTY_TAG: &str = "$third-party";
     const DOMAIN_TAG: &str = "$domain";
-
-    pub fn new() -> FilterConfig {
-        log_info!("Create new filter\n");
-        FilterConfig
-        {
-            ads_provider_list: BTreeMap::new(),
-            //ads_provider_wildcard: BTreeMap::new(),
-            update_status: FilterUpdateStatus::Unchanged,
-        }
-    }
 
     fn get_remote_blocklist_length(curl: &mut Easy) -> Result<u64, curl::Error> {
         let rlen: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
@@ -136,67 +107,24 @@ impl FilterConfig {
         Ok(metadata.len())
     }
 
-    pub fn set_update_status(&mut self, status: FilterUpdateStatus) {
-        self.update_status = status;
-    }
+    //pub fn set_update_status(&mut self, status: FilterUpdateStatus) {
+    //    self.update_status = status;
+    //}
 
-    pub fn is_updated(&self) -> bool {
-        return self.update_status == FilterUpdateStatus::Updated;
-    }
+    //pub fn is_updated(&self) -> bool {
+    //    return self.update_status == FilterUpdateStatus::Updated;
+    //}
 
-    pub fn is_reloaded(&self) -> bool {
-        return self.update_status == FilterUpdateStatus::Reloaded;
-    }
+    //pub fn is_reloaded(&self) -> bool {
+    //    return self.update_status == FilterUpdateStatus::Reloaded;
+    //}
 
-    pub fn is_error(&self) -> bool {
-        return self.update_status == FilterUpdateStatus::DownloadError;
-    }
+    //pub fn is_error(&self) -> bool {
+    //    return self.update_status == FilterUpdateStatus::DownloadError;
+    //}
 
-    pub fn prepare_stat_data(&self) -> String {
-        let mut ret_str: String = Default::default();
-        let mut ads_prov: Vec<&BTreeMap<String, Statistics>> = vec![];
-        ads_prov.push(&self.ads_provider_list);
-        //ads_prov.push(&self.ads_provider_wildcard);
-        /* Table contant */
-        for i in 0..ads_prov.len() {
-            let prov = ads_prov[i];
-            for (key, value) in prov.iter() {
-                if value.requests > 0 {
-                    ret_str += "<tr><td><label class=\"switch\">\n";
-                    ret_str += "<input type=\"checkbox\" id=\"enable_name_id\" name=\"";
-                    ret_str += key;
-                    ret_str += "\" ";
-                    if value.enable {
-                        ret_str += "checked";
-                    } else {
-                        ret_str += "unchecked";
-                    }
-                    ret_str += ">\n";
-                    ret_str += "<span class=\"slider round\"></span></label>";
-                    ret_str += "</td>\n";
-                    ret_str += "<td>\n";
-                    ret_str += if value.get_filter_type() == FilterType::Global {
-                        "Global"
-                    } else if value.get_filter_type() == FilterType::Local {
-                        "Local"
-                    } else {
-                        ""
-                    };
-                    ret_str += "</td>\n<td>";
-                    ret_str += key;
-                    ret_str += "</td>\n<td>";
-                    ret_str += &value.requests.to_string();
-                    ret_str += "</td>\n";
-                    ret_str += "</tr>\n";
-                }
-            }
-        }
-        
-        return ret_str;
-    }
-
-    pub fn get_num_entries(&self) -> usize {
-            return self.ads_provider_list.len()/* + self.ads_provider_wildcard.len()*/;
+    pub fn get_num_entries(conn: &Connection) -> usize {
+        return sqldb_get_filter_rows_count(conn);
     }
 
     pub fn check_update() -> FilterUpdateStatus {
@@ -245,42 +173,18 @@ impl FilterConfig {
         return FilterUpdateStatus::Updated;
     }
 
-    pub fn set_enable(&mut self, key: &String, enable: bool) -> bool {
-        log_debug!("Key: '{}'\n", key);
-        let stat_opt = self.ads_provider_list.get_mut(key);
-        if stat_opt.is_none() {
-            //stat_opt = self.ads_provider_wildcard.get_mut(key);
-            //if stat_opt.is_none() {
+    pub fn set_enable(conn: &Connection, name: &String, enable: bool) -> bool {
+        log_debug!("Enable name: '{}' status: {}\n", name, enable);
+        let res = sqldb_set_name_enable(conn, name, enable);
+        if res.is_err() {
             return false;
-            //}
         }
-        let stat  = stat_opt.unwrap();
-        stat.set_enable(enable);
 
         return true;
     }
 
-    pub fn create_whitelist(&mut self) {
-        let mut whitelist: String = String::default();
-        for (key, value) in self.ads_provider_list.iter_mut() {
-            if value.enable {
-                let tmp_str = format!("||{}^\n", key);
-                whitelist += &tmp_str;
-            }
-        }
-        let res = fs::write(LOCAL_WHITELIST_FILE_NAME, whitelist);
-        if res.is_err() {
-            log_error!("Error write local white list\n");
-        }
-    }
-
-    pub fn clear_enable(&mut self) {
-        for (_key, value) in self.ads_provider_list.iter_mut() {
-            value.set_enable(false);
-        }
-        //for (_key, value) in self.ads_provider_wildcard.iter_mut() {
-        //    value.set_enable(false);
-        //}
+    pub fn clear_enable(conn: &Connection) {
+        let _ = sqldb_clear_all_enable(conn);
     }
     /*
     pub fn search_wildcard(&mut self, name: &String) -> (SearchResult, u64) {
@@ -364,37 +268,36 @@ impl FilterConfig {
         }
     }
 
-    pub fn search(&mut self, key: &String, resolve_local: bool, local_domain: &String) -> (SearchResult, u64) {
+    pub fn search(conn: &Connection, name: &String, resolve_local: bool, local_domain: &String) -> (SearchResult, u64) {
         if resolve_local {
-            let parts: Vec<&str> = key.split('.').collect();
+            let parts: Vec<&str> = name.split('.').collect();
             if parts[parts.len() - 1] == local_domain {
                 return (SearchResult::LocalName, 0);
             }
         }
 
-        let stat_opt = self.ads_provider_list.get_mut(key);
-        if stat_opt.is_none() {
-            //return self.search_wildcard(key)
+        let res = sqldb_is_name_blocked(conn, name);
+        if res.is_err() {
             return (SearchResult::NotFound, 0);
         }
-        let stat  = stat_opt.unwrap();
-        if stat.enable {
-            return (SearchResult::NotFound, 0);
-        }
-        let reject_count = stat.inc_request_count();
+        let reject_count = res.unwrap();
 
         return (SearchResult::Found, reject_count);
     }
 
-    pub fn reload_filter(&mut self) -> Result<(), std::io::Error> {
-        self.ads_provider_list.clear();
-        //self.ads_provider_wildcard.clear();
+    pub fn reload_filter(conn: &mut Connection) -> Result<(), std::io::Error> {
+        log_debug!("Filter: Clean filter table\n");
+        let res = sqldb_clean_filter(conn);
+        if res.is_err() {
+            log_error!("Filter: Unable to clean filter table. Stop update filter\n");
+            return Err(Error::new(ErrorKind::InvalidData, "Unable to clean filter table"));
+        }
 
-        return self.create_black_list_map();
+        return FilterConfig::create_black_list_map(conn);
     }
 
-    pub fn create_black_list_map(&mut self) -> Result<(), std::io::Error> {
-        let filter_files: Vec<&str> = Vec::from([BLOCKLIST_FILE_NAME, LOCAL_BLOCKLIST_FILE_NAME, LOCAL_WHITELIST_FILE_NAME]);
+    pub fn create_black_list_map(conn_db: &mut Connection) -> Result<(), std::io::Error> {
+        let filter_files: Vec<&str> = Vec::from([BLOCKLIST_FILE_NAME, LOCAL_BLOCKLIST_FILE_NAME]);
 
         for index in 0..filter_files.capacity() {
             log_info!("Parse {} block list\n", filter_files[index]);
@@ -404,6 +307,12 @@ impl FilterConfig {
             }
             let file = open_result.unwrap();
             let reader = io::BufReader::new(file);
+
+            let res = conn_db.transaction();
+            if res.is_err() {
+                return Err(Error::new(ErrorKind::InvalidData, "Unable to create transaction"));
+            }
+            let transact = res.unwrap();
 
             let mut total_lines = 0;
             let mut single_line : String;
@@ -469,31 +378,20 @@ impl FilterConfig {
                 }
 
                 if ftype == FilterType::Global || ftype == FilterType::Local {
-                    if self.ads_provider_list.insert(single_line.clone(), Statistics::new(ftype)).is_some() {
-                        log_info!("Dublicated key {}\n", single_line);
-                    } else {
+                    let res = sqldb_insert_filter_entry(&transact, &single_line, ftype);
+                    if res.is_ok() {
                         total_lines += 1;
                     }
-                } else {
-                    // White list
-                    log_debug!("White list entry: {}\n", single_line);
-                    let opt = self.ads_provider_list.get_mut(&single_line);
-                    if opt.is_none() {
-                        //opt = self.ads_provider_wildcard.get_mut(&single_line);
-                        //if opt.is_none() {
-                        log_debug!("Entry not found\n");
-                        continue;
-                        //}
-                    }
-                    let stat = opt.unwrap();
-                    stat.set_enable(true);
-                    stat.inc_request_count();
-                }
+                } 
+            }
+            let res = transact.commit();
+            if res.is_err() {
+                log_error!("Filter: Transaction failed\n");
             }
 
             log_info!("Total {} lines\n", total_lines);
-            log_info!("List size: {}\n", self.ads_provider_list.len());
         }
+        log_info!("Full list size: {}\n", sqldb_get_filter_rows_count(conn_db));
 
         Ok(())
     }
@@ -502,6 +400,5 @@ impl FilterConfig {
 impl Drop for FilterConfig {
     fn drop(&mut self) {
         log_debug!("Drop filter\n");
-        self.ads_provider_list.clear();
     }
 }

@@ -51,8 +51,8 @@ impl LocalConfig {
         })
     }
 
-    pub fn get_db_connection(&self) -> &Connection {
-        return &self.db_conn;
+    pub fn get_db_connection(&mut self) -> &mut Connection {
+        return &mut self.db_conn;
     }
 
     pub fn parse_cmd_params(&mut self) {

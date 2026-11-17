@@ -191,25 +191,25 @@ impl DnsProxy {
     }
 
     fn resolve_request(dns_req_pack : &Vec<u8>, socket : &Arc<UdpSocket>, ip_addr : std::net::SocketAddr, 
-        filter_ref : &Arc<Mutex<FilterConfig>>, curl_ref: &Arc<Mutex<Easy>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
+        curl_ref: &Arc<Mutex<Easy>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
 
         let mut q_type: u16 = 0;
         let asked_name = DnsProxy::get_asked_string(dns_req_pack, &mut q_type);
-        let cfg = cfg_ref.lock().unwrap();
+        let mut cfg = cfg_ref.lock().unwrap();
         let dns_srv_addr = cfg.get_dns_srv_addr();
         let use_doh = cfg.get_use_doh();
         let resolve_local = cfg.get_local_dns_enable();
         let local_domain = cfg.get_local_domain_name();
+        let (is_found, reject_count) = FilterConfig::search(cfg.get_db_connection(), &asked_name, resolve_local, &local_domain);
         drop(cfg);
-        let mut flt = filter_ref.lock().unwrap();
+        //let flt = filter_ref.lock().unwrap();
         let mut dns_response : Vec<u8> = vec![];
-        let (is_found, reject_count) = flt.search(&asked_name, resolve_local, &local_domain);
         let mut log_string: String = Default::default();
         if is_found == SearchResult::NotFound || reject_count == 1 {
             //log_info!("Ask for: {}", asked_name);
             log_string = format!("Ask for: {}", asked_name);
         }
-        drop(flt);
+        //drop(flt);
         let sess_id: u16 = u16::from_be_bytes(dns_req_pack[0..2].try_into().unwrap());
         if is_found == SearchResult::Found {
             let mut reject_buff: [u8; 12] = [0; 12];
@@ -221,7 +221,7 @@ impl DnsProxy {
             }
         } else if is_found == SearchResult::LocalName {
             let mut response: [u8; 512] = [0; 512];
-            let cfg: std::sync::MutexGuard<'_, LocalConfig> = cfg_ref.lock().unwrap();
+            let mut cfg: std::sync::MutexGuard<'_, LocalConfig> = cfg_ref.lock().unwrap();
             let opt = FilterConfig::get_local_name(cfg.get_db_connection(), &asked_name);
             drop(cfg);
             if opt.is_none() {
@@ -295,7 +295,7 @@ impl DnsProxy {
         Ok((dns_req_vec, remote_ip_addr))
     }
 
-    pub fn start_dns_filter(&self, filter_ref: &Arc<Mutex<FilterConfig>>, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
+    pub fn start_dns_filter(&self, cfg_ref: &Arc<Mutex<LocalConfig>>) -> Result<(), std::io::Error> {
         let tpool = ThreadPool::new(DnsProxy::THREAD_POOL_SIZE);
         let cfg = cfg_ref.lock().unwrap();
         let bind_addr = cfg.get_bind_addr();
@@ -316,12 +316,12 @@ impl DnsProxy {
                 return Err(listen_result.err().unwrap());
             }
             let (dns_req_pack, ip_addr) = listen_result.unwrap();
-            let filter = Arc::clone(filter_ref);
+            //let filter = Arc::clone(filter_ref);
             let curl = Arc::clone(&self.curl);
             let cfg = Arc::clone(cfg_ref);
             tpool.execute(move || {
                 // Handle the request
-                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &filter, &curl, &cfg);
+                let query_result = DnsProxy::resolve_request(&dns_req_pack, &socket, ip_addr, &curl, &cfg);
                 // Not sure if we realy need this call
                 drop(dns_req_pack);
                 if query_result.is_err() {
@@ -373,19 +373,17 @@ fn main() -> Result<(), std::io::Error>
     if res.is_err() {
         return Err(Error::new(ErrorKind::InvalidFilename, "Unable to connect to DB"));
     }
-    let mut cfg = res.unwrap();
+    let mut cfg: LocalConfig = res.unwrap();
     cfg.read_config();
     // Force set listen port. Need for debug environment
     cfg.parse_cmd_params();
-    let config = Arc::new(Mutex::new(cfg));
     
-    let mut flt = FilterConfig::new();
-    let res = flt.create_black_list_map();
+    let res = FilterConfig::create_black_list_map(cfg.get_db_connection());
     if res.is_err() {
         log_error!("Create filter failed: {}\n", res.err().unwrap());
         log_info!("Start with empty filter\n");
     }
-    let filter = Arc::new(Mutex::new(flt));
+    let config = Arc::new(Mutex::new(cfg));
     log_info!("Filter was created\n");
 
     let dns_proxy_server = DnsProxy::new();
@@ -397,17 +395,15 @@ fn main() -> Result<(), std::io::Error>
         log_error!("Unable to set ^C handle\n");
     }
     // Start DNS proxy thread
-    let filter_ref = Arc::clone(&filter);
     let cfg_ref = Arc::clone(&config);
     let proxy_thread = thread::spawn(move || {
-        let res = dns_proxy_server.start_dns_filter(&filter_ref, &cfg_ref);
+        let res = dns_proxy_server.start_dns_filter(&cfg_ref);
         tx_proxy.send(res).unwrap();
     });
     // Start UI thread
-    let filter_ref = Arc::clone(&filter);
     let cfg_ref = Arc::clone(&config);
     let ui_thread = thread::spawn(move || {
-        let res: Result<(), Error> = ui_server.start_gui_server(&filter_ref, &cfg_ref);
+        let res: Result<(), Error> = ui_server.start_gui_server(&cfg_ref);
         tx_ui.send(res).unwrap();
     });
     // Wait for finish
